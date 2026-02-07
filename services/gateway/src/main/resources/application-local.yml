@@ -1,0 +1,97 @@
+server:
+  port: 8080
+
+spring:
+  application:
+    name: gateway
+  cloud:
+    gateway:
+      routes:
+        - id: auth-service
+          uri: ${SPRING_CLOUD_GATEWAY_ROUTES_0_URI:http://localhost:8081}
+          predicates:
+            - Path=/api/auth/**
+          filters:
+            - RewritePath=/api/auth/(?<segment>.*), /$\{segment}
+            - name: RequestRateLimiter
+              args:
+                redis-rate-limiter.replenishRate: 20
+                redis-rate-limiter.burstCapacity: 40
+        
+        - id: user-service
+          uri: ${SPRING_CLOUD_GATEWAY_ROUTES_1_URI:http://localhost:8082}
+          predicates:
+            - Path=/api/me/**,/api/users/**
+          filters:
+            - RewritePath=/api/(?<segment>.*), /$\{segment}
+            - AuthenticationFilter
+            - name: RequestRateLimiter
+              args:
+                redis-rate-limiter.replenishRate: 100
+                redis-rate-limiter.burstCapacity: 200
+        
+        - id: presence-service
+          uri: ${SPRING_CLOUD_GATEWAY_ROUTES_2_URI:http://localhost:8083}
+          predicates:
+            - Path=/api/presence/**
+          filters:
+            - RewritePath=/api/presence/(?<segment>.*), /$\{segment}
+            - AuthenticationFilter
+            - name: RequestRateLimiter
+              args:
+                redis-rate-limiter.replenishRate: 100
+                redis-rate-limiter.burstCapacity: 200
+        
+        - id: chat-service
+          uri: ${SPRING_CLOUD_GATEWAY_ROUTES_3_URI:http://localhost:8084}
+          predicates:
+            - Path=/api/chat/**,/ws/**
+          filters:
+            - RewritePath=/api/chat/(?<segment>.*), /$\{segment}
+            - AuthenticationFilter
+            - name: RequestRateLimiter
+              args:
+                redis-rate-limiter.replenishRate: 100
+                redis-rate-limiter.burstCapacity: 200
+      
+      globalcors:
+        corsConfigurations:
+          '[/**]':
+            allowedOrigins:
+              - "http://localhost:3000"
+              - "http://localhost:5173"
+            allowedMethods:
+              - GET
+              - POST
+              - PUT
+              - DELETE
+              - OPTIONS
+            allowedHeaders: "*"
+            allowCredentials: true
+            maxAge: 3600
+
+  data:
+    redis:
+      host: ${REDIS_HOST:localhost}
+      port: ${REDIS_PORT:6379}
+      password: ${REDIS_PASSWORD:}
+      ssl:
+        enabled: ${REDIS_SSL_ENABLED:false}
+
+jwt:
+  secret: ${JWT_SECRET:local_dev_secret_key_must_be_at_least_64_characters_long_for_jwt_signing}
+
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,info,metrics
+  endpoint:
+    health:
+      show-details: always
+
+logging:
+  level:
+    root: INFO
+    com.livepresence: DEBUG
+    org.springframework.cloud.gateway: DEBUG

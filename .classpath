@@ -1,0 +1,119 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<classpath>
+	<classpathentry kind="con" path="org.eclipse.jdt.launching.JRE_CONTAINER">
+		<attributes>
+			<attribute name="module" value="true"/>
+		</attributes>
+	</classpathentry>
+	<classpathentry kind="src" path="backend/src/main/java"/>
+	<classpathentry kind="lib" path="C:/Users/91945/.m2/repository/org/springframework/boot/spring-boot-autoconfigure/1.3.2.RELEASE/spring-boot-autoconfigure-1.3.2.RELEASE.jar" sourcepath="C:/Users/91945/.m2/repository/org/springframework/boot/spring-boot-autoconfigure/1.3.2.RELEASE/spring-boot-autoconfigure-1.3.2.RELEASE-sources.jar">
+		<attributes>
+			<attribute name="maven.pomderived" value="true"/>
+			<attribute name="org.eclipse.jst.component.archivename" value="spring-boot-autoconfigure-1.3.2.RELEASE.jar"/>
+			<attribute name="maven.groupId" value="org.springframework.boot"/>
+			<attribute name="maven.artifactId" value="spring-boot-autoconfigure"/>
+			<attribute name="maven.version" value="1.3.2.RELEASE"/>
+			<attribute name="maven.scope" value="compile"/>
+		</attributes>
+	</classpathentry>
+	<classpathentry kind="lib" path="C:/Users/91945/.m2/repository/org/springframework/spring-context/4.2.4.RELEASE/spring-context-4.2.4.RELEASE.jar" sourcepath="C:/Users/91945/.m2/repository/org/springframework/spring-context/4.2.4.RELEASE/spring-context-4.2.4.RELEASE-sources.jar">
+		<attributes>
+			<attribute name="maven.pomderived" value="true"/>
+			<attribute name="org.eclipse.jst.component.archivename" value="spring-context-4.2.4.RELEASE.jar"/>
+			<attribute name="maven.groupId" value="org.springframework"/>
+			<attribute name="maven.artifactId" value="spring-context"/>
+			<attribute name="maven.version" value="4.2.4.RELEASE"/>
+			<attribute name="maven.scope" value="compile"/>
+		</attributes>
+	</classpathentry>
+	<classpathentry kind="lib" path="C:/Users/91945/.m2/repository/org/springframework/boot/spring-boot/1.3.2.RELEASE/spring-boot-1.3.2.RELEASE.jar" sourcepath="C:/Users/91945/.m2/repository/org/springframework/boot/spring-boot/1.3.2.RELEASE/spring-boot-1.3.2.RELEASE-sources.jar">
+		<attributes>
+			<attribute name="maven.pomderived" value="true"/>
+			<attribute name="org.eclipse.jst.component.archivename" value="spring-boot-1.3.2.RELEASE.jar"/>
+			<attribute name="maven.groupId" value="org.springframework.boot"/>
+			<attribute name="maven.artifactId" value="spring-boot"/>
+			<attribute name="maven.version" value="1.3.2.RELEASE"/>
+			<attribute name="maven.scope" value="compile"/>
+		</attributes>
+	</classpathentry>
+	<classpathentry kind="lib" path="C:/Users/91945/.m2/repository/org/springframework/spring-web/4.2.4.RELEASE/spring-web-4.2.4.RELEASE.jar" sourcepath="C:/Users/91945/.m2/repository/org/springframework/spring-web/4.2.4.RELEASE/spring-web-4.2.4.RELEASE-sources.jar">
+		<attributes>
+			<attribute name="maven.pomderived" value="true"/>
+			<attribute name="org.eclipse.jst.component.archivename" value="spring-web-4.2.4.RELEASE.jar"/>
+			<attribute name="maven.groupId" value="org.springframework"/>
+			<attribute name="maven.artifactId" value="spring-web"/>
+			<attribute name="maven.version" value="4.2.4.RELEASE"/>
+			<attribute name="maven.scope" value="compile"/>
+		</attributes>
+	</classpathentry>
+	<classpathentry kind="lib" path="C:/Users/91945/.m2/repository/org/springframework/security/spring-security-core/4.0.3.RELEASE/spring-security-core-4.0.3.RELEASE.jar" sourcepath="C:/Users/91945/.m2/repository/org/springframework/security/spring-security-core/4.0.3.RELEASE/spring-security-core-4.0.3.RELEASE-sources.jar">
+		<attributes>
+			<attribute name="maven.pomderived" value="true"/>
+			<attribute name="org.eclipse.jst.component.archivename" value="spring-security-core-4.0.3.RELEASE.jar"/>
+			<attribute name="maven.groupId" value="org.springframework.security"/>
+			<attribute name="maven.artifactId" value="spring-security-core"/>
+			<attribute name="maven.version" value="4.0.3.RELEASE"/>
+			<attribute name="maven.scope" value="compile"/>
+		</attributes>
+	</classpathentry>
+	<classpathentry kind="lib" path="C:/Users/91945/.m2/repository/org/springframework/security/spring-security-config/4.0.3.RELEASE/spring-security-config-4.0.3.RELEASE.jar" sourcepath="C:/Users/91945/.m2/repository/org/springframework/security/spring-security-config/4.0.3.RELEASE/spring-security-config-4.0.3.RELEASE-sources.jar">
+		<attributes>
+			<attribute name="maven.pomderived" value="true"/>
+			<attribute name="org.eclipse.jst.component.archivename" value="spring-security-config-4.0.3.RELEASE.jar"/>
+			<attribute name="maven.groupId" value="org.springframework.security"/>
+			<attribute name="maven.artifactId" value="spring-security-config"/>
+			<attribute name="maven.version" value="4.0.3.RELEASE"/>
+			<attribute name="maven.scope" value="compile"/>
+		</attributes>
+	</classpathentry>
+	<classpathentry kind="lib" path="C:/Users/91945/.m2/repository/org/springframework/security/spring-security-web/4.0.3.RELEASE/spring-security-web-4.0.3.RELEASE.jar" sourcepath="C:/Users/91945/.m2/repository/org/springframework/security/spring-security-web/4.0.3.RELEASE/spring-security-web-4.0.3.RELEASE-sources.jar">
+		<attributes>
+			<attribute name="maven.pomderived" value="true"/>
+			<attribute name="org.eclipse.jst.component.archivename" value="spring-security-web-4.0.3.RELEASE.jar"/>
+			<attribute name="maven.groupId" value="org.springframework.security"/>
+			<attribute name="maven.artifactId" value="spring-security-web"/>
+			<attribute name="maven.version" value="4.0.3.RELEASE"/>
+			<attribute name="maven.scope" value="compile"/>
+		</attributes>
+	</classpathentry>
+	<classpathentry kind="lib" path="C:/Users/91945/.m2/repository/org/springframework/spring-websocket/4.2.4.RELEASE/spring-websocket-4.2.4.RELEASE.jar" sourcepath="C:/Users/91945/.m2/repository/org/springframework/spring-websocket/4.2.4.RELEASE/spring-websocket-4.2.4.RELEASE-sources.jar">
+		<attributes>
+			<attribute name="maven.pomderived" value="true"/>
+			<attribute name="org.eclipse.jst.component.archivename" value="spring-websocket-4.2.4.RELEASE.jar"/>
+			<attribute name="maven.groupId" value="org.springframework"/>
+			<attribute name="maven.artifactId" value="spring-websocket"/>
+			<attribute name="maven.version" value="4.2.4.RELEASE"/>
+			<attribute name="maven.scope" value="compile"/>
+		</attributes>
+	</classpathentry>
+	<classpathentry exported="true" kind="lib" path="C:/Users/91945/.m2/repository/org/springframework/data/spring-data-jpa/1.9.2.RELEASE/spring-data-jpa-1.9.2.RELEASE.jar" sourcepath="C:/Users/91945/.m2/repository/org/springframework/data/spring-data-jpa/1.9.2.RELEASE/spring-data-jpa-1.9.2.RELEASE-sources.jar">
+		<attributes>
+			<attribute name="maven.pomderived" value="true"/>
+			<attribute name="org.eclipse.jst.component.archivename" value="spring-data-jpa-1.9.2.RELEASE.jar"/>
+			<attribute name="maven.groupId" value="org.springframework.data"/>
+			<attribute name="maven.artifactId" value="spring-data-jpa"/>
+			<attribute name="maven.version" value="1.9.2.RELEASE"/>
+			<attribute name="maven.scope" value="compile"/>
+		</attributes>
+	</classpathentry>
+	<classpathentry kind="lib" path="C:/Users/91945/.m2/repository/org/hibernate/javax/persistence/hibernate-jpa-2.1-api/1.0.0.Final/hibernate-jpa-2.1-api-1.0.0.Final.jar" sourcepath="C:/Users/91945/.m2/repository/org/hibernate/javax/persistence/hibernate-jpa-2.1-api/1.0.0.Final/hibernate-jpa-2.1-api-1.0.0.Final-sources.jar">
+		<attributes>
+			<attribute name="maven.pomderived" value="true"/>
+			<attribute name="org.eclipse.jst.component.archivename" value="hibernate-jpa-2.1-api-1.0.0.Final.jar"/>
+			<attribute name="maven.groupId" value="org.hibernate.javax.persistence"/>
+			<attribute name="maven.artifactId" value="hibernate-jpa-2.1-api"/>
+			<attribute name="maven.version" value="1.0.0.Final"/>
+			<attribute name="maven.scope" value="compile"/>
+		</attributes>
+	</classpathentry>
+	<classpathentry kind="lib" path="C:/Users/91945/.m2/repository/org/springframework/security/spring-security-config/5.5.2/spring-security-config-5.5.2.jar" sourcepath="C:/Users/91945/.m2/repository/org/springframework/security/spring-security-config/5.5.2/spring-security-config-5.5.2-sources.jar">
+		<attributes>
+			<attribute name="maven.pomderived" value="true"/>
+			<attribute name="maven.groupId" value="org.springframework.security"/>
+			<attribute name="maven.artifactId" value="spring-security-config"/>
+			<attribute name="maven.version" value="5.5.2"/>
+			<attribute name="maven.scope" value="compile"/>
+		</attributes>
+	</classpathentry>
+	<classpathentry kind="output" path="bin"/>
+</classpath>

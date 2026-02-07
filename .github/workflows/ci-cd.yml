@@ -1,0 +1,265 @@
+name: CI/CD Pipeline
+
+on:
+  push:
+    branches: [main, develop]
+  pull_request:
+    branches: [main, develop]
+
+env:
+  AWS_REGION: us-east-1
+  ECR_REGISTRY: ${{ secrets.AWS_ACCOUNT_ID }}.dkr.ecr.${{ secrets.AWS_REGION }}.amazonaws.com
+
+jobs:
+  # Build and test backend services
+  test-backend:
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        service: [gateway, auth, user, presence, chat]
+    
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up JDK 21
+        uses: actions/setup-java@v4
+        with:
+          java-version: '21'
+          distribution: 'temurin'
+          cache: 'gradle'
+
+      - name: Run tests
+        working-directory: services/${{ matrix.service }}
+        run: ./gradlew test --no-daemon
+
+      - name: Build JAR
+        working-directory: services/${{ matrix.service }}
+        run: ./gradlew bootJar --no-daemon
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ matrix.service }}-jar
+          path: services/${{ matrix.service }}/build/libs/*.jar
+
+  # Build and test frontend
+  test-frontend:
+    runs-on: ubuntu-latest
+    
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+          cache-dependency-path: services/frontend/package-lock.json
+
+      - name: Install dependencies
+        working-directory: services/frontend
+        run: npm ci
+
+      - name: Run lint
+        working-directory: services/frontend
+        run: npm run lint || true
+
+      - name: Build
+        working-directory: services/frontend
+        run: npm run build
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: frontend-dist
+          path: services/frontend/dist
+
+  # Security scanning
+  security-scan:
+    runs-on: ubuntu-latest
+    needs: [test-backend, test-frontend]
+    
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Run Trivy vulnerability scanner
+        uses: aquasecurity/trivy-action@master
+        with:
+          scan-type: 'fs'
+          scan-ref: '.'
+          format: 'sarif'
+          output: 'trivy-results.sarif'
+
+      - name: Upload Trivy results to GitHub Security
+        uses: github/codeql-action/upload-sarif@v3
+        with:
+          sarif_file: 'trivy-results.sarif'
+
+  # Build and push Docker images
+  build-and-push:
+    runs-on: ubuntu-latest
+    needs: [test-backend, test-frontend, security-scan]
+    if: github.ref == 'refs/heads/main' || github.ref == 'refs/heads/develop'
+    strategy:
+      matrix:
+        service: [gateway, auth, user, presence, chat, frontend]
+    
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-region: ${{ env.AWS_REGION }}
+
+      - name: Login to Amazon ECR
+        id: login-ecr
+        uses: aws-actions/amazon-ecr-login@v2
+
+      - name: Determine stage
+        id: stage
+        run: |
+          if [[ "${{ github.ref }}" == "refs/heads/main" ]]; then
+            echo "stage=prod" >> $GITHUB_OUTPUT
+          else
+            echo "stage=dev" >> $GITHUB_OUTPUT
+          fi
+
+      - name: Build, tag, and push image
+        working-directory: services/${{ matrix.service }}
+        env:
+          ECR_REPOSITORY: live-presence/${{ matrix.service }}-${{ steps.stage.outputs.stage }}
+          IMAGE_TAG: ${{ github.sha }}
+        run: |
+          docker build -t $ECR_REPOSITORY:$IMAGE_TAG .
+          docker tag $ECR_REPOSITORY:$IMAGE_TAG ${{ env.ECR_REGISTRY }}/$ECR_REPOSITORY:$IMAGE_TAG
+          docker tag $ECR_REPOSITORY:$IMAGE_TAG ${{ env.ECR_REGISTRY }}/$ECR_REPOSITORY:latest
+          docker push ${{ env.ECR_REGISTRY }}/$ECR_REPOSITORY:$IMAGE_TAG
+          docker push ${{ env.ECR_REGISTRY }}/$ECR_REPOSITORY:latest
+
+      - name: Scan image with Trivy
+        uses: aquasecurity/trivy-action@master
+        with:
+          image-ref: '${{ env.ECR_REGISTRY }}/live-presence/${{ matrix.service }}-${{ steps.stage.outputs.stage }}:${{ github.sha }}'
+          format: 'table'
+          exit-code: '1'
+          ignore-unfixed: true
+          severity: 'CRITICAL,HIGH'
+
+  # Deploy to ECS
+  deploy:
+    runs-on: ubuntu-latest
+    needs: [build-and-push]
+    if: github.ref == 'refs/heads/main' || github.ref == 'refs/heads/develop'
+    strategy:
+      matrix:
+        service: [gateway, auth, user, presence, chat, frontend]
+    
+    steps:
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-region: ${{ env.AWS_REGION }}
+
+      - name: Determine stage
+        id: stage
+        run: |
+          if [[ "${{ github.ref }}" == "refs/heads/main" ]]; then
+            echo "stage=prod" >> $GITHUB_OUTPUT
+          else
+            echo "stage=dev" >> $GITHUB_OUTPUT
+          fi
+
+      - name: Update ECS service
+        run: |
+          aws ecs update-service \
+            --cluster live-presence-${{ steps.stage.outputs.stage }} \
+            --service ${{ matrix.service }}-service \
+            --force-new-deployment \
+            --region ${{ env.AWS_REGION }}
+
+      - name: Wait for service stability
+        run: |
+          aws ecs wait services-stable \
+            --cluster live-presence-${{ steps.stage.outputs.stage }} \
+            --services ${{ matrix.service }}-service \
+            --region ${{ env.AWS_REGION }}
+
+  # Run smoke tests
+  smoke-tests:
+    runs-on: ubuntu-latest
+    needs: [deploy]
+    if: github.ref == 'refs/heads/main' || github.ref == 'refs/heads/develop'
+    
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Determine stage
+        id: stage
+        run: |
+          if [[ "${{ github.ref }}" == "refs/heads/main" ]]; then
+            echo "stage=prod" >> $GITHUB_OUTPUT
+          else
+            echo "stage=dev" >> $GITHUB_OUTPUT
+          fi
+
+      - name: Get ALB URL
+        id: alb
+        run: |
+          ALB_DNS=$(aws elbv2 describe-load-balancers \
+            --names live-presence-alb-${{ steps.stage.outputs.stage }} \
+            --query 'LoadBalancers[0].DNSName' \
+            --output text)
+          echo "url=https://$ALB_DNS" >> $GITHUB_OUTPUT
+
+      - name: Health check - Gateway
+        run: |
+          curl -f ${{ steps.alb.outputs.url }}/api/actuator/health || exit 1
+
+      - name: Health check - Auth
+        run: |
+          STATUS=$(curl -o /dev/null -s -w "%{http_code}" ${{ steps.alb.outputs.url }}/api/auth/health)
+          if [ $STATUS -ne 200 ]; then exit 1; fi
+
+      - name: Integration test - Registration
+        run: |
+          EMAIL="test-$(date +%s)@example.com"
+          RESPONSE=$(curl -s -X POST ${{ steps.alb.outputs.url }}/api/auth/register \
+            -H "Content-Type: application/json" \
+            -d "{\"email\":\"$EMAIL\",\"password\":\"Test123!\",\"displayName\":\"Test User\"}")
+          echo $RESPONSE | jq -e '.accessToken' || exit 1
+
+  # Notify deployment
+  notify:
+    runs-on: ubuntu-latest
+    needs: [smoke-tests]
+    if: always()
+    
+    steps:
+      - name: Notify Slack
+        uses: slackapi/slack-github-action@v1
+        with:
+          payload: |
+            {
+              "text": "Deployment ${{ needs.smoke-tests.result }} for ${{ github.ref }}",
+              "blocks": [
+                {
+                  "type": "section",
+                  "text": {
+                    "type": "mrkdwn",
+                    "text": "*Deployment Status:* ${{ needs.smoke-tests.result }}\n*Branch:* ${{ github.ref }}\n*Commit:* ${{ github.sha }}"
+                  }
+                }
+              ]
+            }
+        env:
+          SLACK_WEBHOOK_URL: ${{ secrets.SLACK_WEBHOOK_URL }}

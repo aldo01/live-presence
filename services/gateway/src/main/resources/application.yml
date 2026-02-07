@@ -1,0 +1,152 @@
+server:
+  port: 8080
+
+spring:
+  application:
+    name: gateway-service
+  
+  cloud:
+    gateway:
+      default-filters:
+        - name: Retry
+          args:
+            retries: 3
+            statuses: BAD_GATEWAY,GATEWAY_TIMEOUT
+            methods: GET,POST,PUT,DELETE
+            backoff:
+              firstBackoff: 50ms
+              maxBackoff: 500ms
+        - name: CircuitBreaker
+          args:
+            name: default
+            fallbackUri: forward:/fallback
+        - name: RequestRateLimiter
+          args:
+            redis-rate-limiter.replenishRate: 100
+            redis-rate-limiter.burstCapacity: 200
+            redis-rate-limiter.requestedTokens: 1
+      
+      routes:
+        # Auth Service Routes
+        - id: auth-service
+          uri: http://auth.live-presence.local:8080
+          predicates:
+            - Path=/api/auth/**
+          filters:
+            - StripPrefix=1
+            - name: RequestRateLimiter
+              args:
+                redis-rate-limiter.replenishRate: 20
+                redis-rate-limiter.burstCapacity: 40
+        
+        # User Service Routes
+        - id: user-service
+          uri: http://user.live-presence.local:8080
+          predicates:
+            - Path=/api/users/**,/api/me/**
+          filters:
+            - StripPrefix=1
+            - AuthenticationFilter
+        
+        # Presence Service Routes
+        - id: presence-service
+          uri: http://presence.live-presence.local:8080
+          predicates:
+            - Path=/api/presence/**
+          filters:
+            - StripPrefix=1
+            - AuthenticationFilter
+        
+        # Chat Service Routes (HTTP)
+        - id: chat-service-http
+          uri: http://chat.live-presence.local:8080
+          predicates:
+            - Path=/api/conversations/**,/api/messages/**
+          filters:
+            - StripPrefix=1
+            - AuthenticationFilter
+        
+        # Chat Service Routes (WebSocket)
+        - id: chat-service-ws
+          uri: ws://chat.live-presence.local:8080
+          predicates:
+            - Path=/ws/**
+          filters:
+            - AuthenticationFilter
+      
+      globalcors:
+        corsConfigurations:
+          '[/**]':
+            allowedOriginPatterns: "*"
+            allowedMethods:
+              - GET
+              - POST
+              - PUT
+              - DELETE
+              - OPTIONS
+            allowedHeaders: "*"
+            allowCredentials: true
+            maxAge: 3600
+  
+  data:
+    redis:
+      host: ${REDIS_HOST:localhost}
+      port: ${REDIS_PORT:6379}
+      password: ${REDIS_PASSWORD:}
+      ssl:
+        enabled: ${REDIS_SSL_ENABLED:true}
+      timeout: 2000ms
+      lettuce:
+        pool:
+          max-active: 20
+          max-idle: 10
+          min-idle: 5
+
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,info,metrics,prometheus
+  endpoint:
+    health:
+      show-details: always
+  metrics:
+    export:
+      prometheus:
+        enabled: true
+    tags:
+      application: ${spring.application.name}
+  tracing:
+    sampling:
+      probability: 1.0
+
+logging:
+  level:
+    root: INFO
+    com.livepresence: DEBUG
+    org.springframework.cloud.gateway: DEBUG
+  pattern:
+    console: "%d{yyyy-MM-dd HH:mm:ss} [%thread] %-5level %logger{36} - %msg%n"
+
+# JWT Configuration
+jwt:
+  secret: ${JWT_SECRET:dev_secret_change_me_must_be_at_least_64_chars_long_for_production}
+
+# Resilience4j Circuit Breaker
+resilience4j:
+  circuitbreaker:
+    instances:
+      default:
+        registerHealthIndicator: true
+        slidingWindowSize: 10
+        minimumNumberOfCalls: 5
+        permittedNumberOfCallsInHalfOpenState: 3
+        automaticTransitionFromOpenToHalfOpenEnabled: true
+        waitDurationInOpenState: 10s
+        failureRateThreshold: 50
+        eventConsumerBufferSize: 10
+  
+  timelimiter:
+    instances:
+      default:
+        timeoutDuration: 3s

@@ -1,0 +1,23 @@
+{
+  "name": "live-presence-cdk",
+  "version": "1.0.0",
+  "description": "AWS CDK Infrastructure for Live Presence Application",
+  "scripts": {
+    "build": "tsc",
+    "watch": "tsc -w",
+    "cdk": "cdk",
+    "deploy": "cdk deploy --all",
+    "destroy": "cdk destroy --all",
+    "synth": "cdk synth"
+  },
+  "devDependencies": {
+    "@types/node": "^20.10.0",
+    "aws-cdk": "^2.115.0",
+    "ts-node": "^10.9.2",
+    "typescript": "^5.3.3"
+  },
+  "dependencies": {
+    "aws-cdk-lib": "^2.115.0",
+    "constructs": "^10.3.0"
+  }
+}
