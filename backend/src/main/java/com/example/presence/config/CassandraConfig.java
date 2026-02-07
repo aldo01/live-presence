@@ -2,6 +2,13 @@ package com.example.presence.config;
 
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.context.annotation.Configuration;
+import org.springframework.context.annotation.Bean;
+import java.net.InetSocketAddress;
+import java.util.ArrayList;
+import java.util.List;
+import com.datastax.oss.driver.api.core.CqlSession;
+import org.springframework.data.cassandra.core.CassandraTemplate;
+import org.springframework.data.cassandra.core.convert.CassandraConverter;
 import org.springframework.data.cassandra.config.AbstractCassandraConfiguration;
 import org.springframework.data.cassandra.config.SchemaAction;
 import org.springframework.data.cassandra.repository.config.EnableCassandraRepositories;
@@ -50,5 +57,36 @@ public class CassandraConfig extends AbstractCassandraConfiguration {
   @Override
   public String[] getEntityBasePackages() {
     return new String[]{"com.example.presence.chat.cassandra"};
+  }
+
+  @Bean
+  public CqlSession cqlSession() {
+    // contactPoints may be a comma separated list like host:port
+    String[] cps = contactPoints.split(",");
+    List<InetSocketAddress> addrs = new ArrayList<>();
+    for (String cp : cps) {
+      String trimmed = cp.trim();
+      if (trimmed.isEmpty()) continue;
+      String host = trimmed;
+      int p = port;
+      if (trimmed.contains(":")) {
+        String[] parts = trimmed.split(":");
+        host = parts[0];
+        try { p = Integer.parseInt(parts[1]); } catch (NumberFormatException ignored) {}
+      }
+      addrs.add(new InetSocketAddress(host, p));
+    }
+
+    CqlSession.Builder builder = CqlSession.builder().withLocalDatacenter(localDatacenter);
+    for (InetSocketAddress a : addrs) {
+      builder.addContactPoint(a);
+    }
+
+    return builder.build();
+  }
+
+  @Bean
+  public CassandraTemplate cassandraTemplate(CqlSession session, CassandraConverter converter) {
+    return new CassandraTemplate(session, converter);
   }
 }
