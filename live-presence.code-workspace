@@ -1,0 +1,17 @@
+{
+	"folders": [
+		{
+			"path": "."
+		},
+		{
+			"path": ".."
+		}
+	],
+	"settings": {
+		"typescript.tsserver.maxTsServerMemory": 8192,
+		"chat.tools.terminal.autoApprove": {
+			"make": true,
+			"docker exec": true
+		}
+	}
+}

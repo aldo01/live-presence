@@ -3,9 +3,42 @@
 ## Quick Start (5 minutes)
 
 ### Prerequisites
+
+#### Java (Required for Backend Development)
+- **Java 21 JDK** - Download & setup instructions: [JAVA_SETUP.md](./JAVA_SETUP.md)
+  ```bash
+  java -version      # Must return openjdk "21.x"
+  javac -version     # Must return javac "21.x"
+  ```
+
+#### Databases (Auto-Magically via Docker)
+- **PostgreSQL 16** - [Setup Guide](./POSTGRES_SETUP.md)
+  - Included in `docker-compose.local.yml`
+  - Auto-runs migrations via Flyway
+  - Access: `postgresql://postgres:postgres@localhost:5432/livepresence`
+
+- **Redis 7** - [Setup Guide](./REDIS_SETUP.md)
+  - Included in `docker-compose.local.yml`
+  - Real-time presence & caching
+  - Access: `redis://localhost:6379`
+
+#### Environment Setup
 - **Docker Desktop** installed and running
+- **Node.js 18+** (for frontend) - Optional if using Docker
 - **8GB+ RAM** available for containers
 - **Ports available**: 3000, 5432, 6379, 8080-8084
+
+#### Quick Setup (One-time)
+```bash
+# 1. Install Java 21
+make install-java  # Requires SDKMAN, or install manually
+
+# 2. Verify Java
+make check-java
+
+# 3. Build backend (downloads dependencies ~10 min)
+make build
+```
 
 ### Windows Users
 
@@ -108,7 +141,77 @@ docker exec -it live-presence-redis redis-cli
 docker exec -it live-presence-redis redis-cli ping
 ```
 
-## 🔧 Development Workflow
+## � Database Management
+
+### Health Check
+```bash
+# Check status of both databases
+make db-health
+```
+
+### PostgreSQL Operations
+See [POSTGRES_SETUP.md](./POSTGRES_SETUP.md) for detailed guide.
+
+```bash
+# Connect to PostgreSQL
+make db-shell-postgres
+# Or manually:
+docker exec -it live-presence-postgres psql -U postgres -d livepresence
+
+# Backup
+make db-backup-postgres
+# Or manually:
+./scripts/backup-postgres.sh
+
+# Restore
+make db-restore-postgres
+# Or manually:
+./scripts/restore-postgres.sh <backup-file>
+
+# List tables
+docker exec -it live-presence-postgres psql -U postgres -d livepresence -c "\dt"
+
+# Check database size
+docker exec -it live-presence-postgres psql -U postgres -d livepresence -c "SELECT pg_size_pretty(pg_database_size('livepresence'));"
+```
+
+### Redis Operations
+See [REDIS_SETUP.md](./REDIS_SETUP.md) for detailed guide.
+
+```bash
+# Connect to Redis
+make db-shell-redis
+# Or manually:
+docker exec -it live-presence-redis redis-cli
+
+# Backup
+make db-backup-redis
+# Or manually:
+./scripts/backup-redis.sh
+
+# Restore
+make db-restore-redis
+# Or manually:
+./scripts/restore-redis.sh <backup-file>
+
+# Check key count
+docker exec -it live-presence-redis redis-cli DBSIZE
+
+# View all keys
+docker exec -it live-presence-redis redis-cli KEYS '*'
+
+# Monitor real-time commands
+docker exec -it live-presence-redis redis-cli MONITOR
+
+# Check memory usage
+docker exec -it live-presence-redis redis-cli INFO memory
+```
+
+### Reset All Databases
+```bash
+# ⚠️  WARNING: Deletes all data
+make db-reset
+```
 
 ### Making Backend Changes
 

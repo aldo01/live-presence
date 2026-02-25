@@ -6,6 +6,228 @@ I've transformed your Live Presence application from a monolithic architecture i
 
 ---
 
+## ⚡ Quick Start
+
+### Prerequisites ✅
+- **Java 21** (JDK) - [Setup Guide](./JAVA_SETUP.md)
+  ```bash
+  java -version  # Must return 21.x
+  ```
+- **PostgreSQL 16** - [Setup Guide](./POSTGRES_SETUP.md) (auto via Docker)
+- **Redis 7** - [Setup Guide](./REDIS_SETUP.md) (auto via Docker)
+- **Node.js 18+** - For frontend development
+- **Docker & Docker Compose** - For local infrastructure
+- **Git** - For version control
+
+### Automatic Setup
+```bash
+# macOS / Linux
+bash scripts/setup.sh
+
+# Windows
+.\scripts\setup.bat
+```
+
+### Manual Setup & Run (5 minutes)
+```bash
+# 1. Install Java 21 (if needed)
+make install-java
+
+# 2. Start local development stack
+make start-local
+
+# 3. In another terminal, run backend
+make run
+
+# 4. In another terminal, start frontend
+cd frontend && npm install && npm run dev
+```
+
+**Access**:
+- Frontend: http://localhost:3000
+- Backend API: http://localhost:8080
+- Health Check: http://localhost:8080/actuator/health
+
+See [JAVA_SETUP.md](./JAVA_SETUP.md) for detailed installation instructions.
+
+---
+
+## 📚 Documentation
+
+- **[Setup Guide](./DEVELOPMENT.md)** - Complete development environment setup
+- **[Quick Start](./QUICKSTART.md)** - Essential commands reference
+- **[Local Development](./LOCAL_DEVELOPMENT.md)** - Running locally
+- **[Database Guide](./DATABASE.md)** - PostgreSQL & Redis setup
+  - [Database Commands](./DATABASE_COMMANDS.md) - Quick reference for common SQL/Redis commands
+  - [PostgreSQL Setup](./POSTGRES_SETUP.md) - Detailed PostgreSQL guide
+  - [Redis Setup](./REDIS_SETUP.md) - Detailed Redis guide
+- **[Java Setup](./JAVA_SETUP.md)** - Java 21 installation
+- **[Deployment Guide](./DEPLOYMENT.md)** - AWS deployment
+- **[Feature Roadmap](./FEATURE_ROADMAP.md)** - Planned features
+
+---
+
+## 🏗️ System Architecture
+
+### High-Level Architecture
+
+```
+┌─────────────────────────────────────────────────────────────────┐
+│                           AWS CloudFront / WAF                  │
+└────────────────────────┬────────────────────────────────────────┘
+         │
+         ├─→ Frontend (React/SPA)  ←─ API Requests
+         │
+         ├─────────────────────────────────────────────┐
+         │           AWS Application Load Balancer      │
+         │  (Port 443 TLS, Health Checks, Auto-Scale)  │
+         └──────────────┬─────────────────────────────┘
+                        │
+        ┌───────────────┴────────────────────┐
+        │                                    │
+   ┌─────────────┐                    ┌─────────────┐
+   │   Gateway   │ Validates JWT      │   Backend   │
+   │  (Port 8080)├──────────────────→ │ (Port 8080) │
+   │ Spring Cloud│ Routes requests    │   Monolith  │
+   │  Gateway    │ Rate limiting      │             │
+   └─────────────┘                    └────┬────────┘
+                                           │
+        ┌──────────────────┬────────────────┼────────────────┬─────────────┐
+        │                  │                │                │             │
+   ┌─────────┐        ┌─────────┐    ┌─────────┐      ┌─────────┐    ┌──────────┐
+   │PostgreSQL│        │ Redis   │    │Cassandra│      │  Kafka  │    │DynamoDB? │
+   │   (RDS) │        │  (Cache)│    │  (TS)   │      │(Events) │    │(Sessions)│
+   │16 Aurora│        │7 Cluster│    │4.1      │      │7.5      │    │          │
+   └─────────┘        └─────────┘    └─────────┘      └─────────┘    └──────────┘
+```
+
+### Technology Stack
+
+| Layer | Technology | Version | Purpose |
+|-------|------------|---------|---------|
+| **Frontend** | React | 18.3 | Web UI |
+| | TypeScript | 5.3 | Type safety |
+| | Vite | 5.4 | Fast bundler |
+| | Leaflet | 1.9.4 | Maps |
+| **Backend** | Java | 21 (LTS) | Core language |
+| | Spring Boot | 3.3.5 | Framework |
+| | Spring Cloud | 2023.0.0 | Microservices |
+| | Spring Security | Latest | Auth/Authorization |
+| **Databases** | PostgreSQL | 16 | Relational data |
+| | Redis | 7 | Cache/Sessions/Presence |
+| | Cassandra | 4.1 | Time-series (messages) |
+| **Events** | Kafka | 7.5 | Event streaming |
+| **Infrastructure** | AWS ECS | Fargate | Container orchestration |
+| | AWS RDS | Aurora PostgreSQL | Managed database |
+| | AWS ElastiCache | Redis | Managed cache |
+| | AWS ALB | Latest | Load balancing |
+| | AWS CDK | TypeScript | Infrastructure as Code |
+| **DevOps** | Docker | Latest | Containerization |
+| | GitHub Actions | Latest | CI/CD |
+
+### Directory Structure
+
+```
+live-presence/
+├── backend/                           # Monolithic Java Spring Boot service
+│   ├── src/main/java/com/example/
+│   │   ├── presence/
+│   │   │   ├── auth/                 # JWT auth, user registration/login
+│   │   │   ├── user/                 # User profiles, preferences
+│   │   │   ├── presence/             # Geospatial presence tracking (Redis)
+│   │   │   ├── chat/                 # WebSocket messaging (STOMP)
+│   │   │   ├── feed/                 # Location-based post feed
+│   │   │   ├── config/               # Spring configs, security, Redis, Cassandra
+│   │   │   └── kafka/                # Event producers/consumers
+│   │   └── entity/                   # JPA entities
+│   ├── src/main/resources/
+│   │   ├── application.yml           # Spring config
+│   │   └── db/migration/             # Flyway migrations (V1__init_core_tables, etc.)
+│   └── build.gradle                  # Gradle build config
+│
+├── services/
+│   └── gateway/                      # Spring Cloud Gateway (API router)
+│       ├── src/main/java/
+│       │   └── AuthenticationFilter.java
+│       └── build.gradle
+│
+├── frontend/                         # React TypeScript SPA
+│   ├── src/
+│   │   ├── pages/
+│   │   │   ├── Live.jsx              # Main hub (map + chat + feed)
+│   │   │   ├── Login.jsx             # Authentication
+│   │   │   ├── Register.jsx          # User signup
+│   │   │   └── ProfileEdit.jsx       # Settings
+│   │   ├── components/
+│   │   │   ├── MapView.jsx           # Leaflet map with user presence
+│   │   │   ├── PostFeed.jsx          # Instagram-style feed
+│   │   │   ├── ChatWindow.jsx        # WebSocket messaging
+│   │   │   └── PostComposer.jsx      # Create posts
+│   │   ├── api.js                    # 40+ REST endpoints + WebSocket
+│   │   └── main.jsx
+│   ├── vite.config.js
+│   └── package.json
+│
+├── infrastructure/
+│   └── cdk/                          # AWS CDK TypeScript
+│       ├── lib/
+│       │   ├── network-stack.ts      # VPC, subnets, security groups
+│       │   ├── database-stack.ts     # RDS Aurora PostgreSQL
+│       │   ├── cache-stack.ts        # ElastiCache Redis
+│       │   ├── ecs-stack.ts          # Fargate services + ALB
+│       │   ├── monitoring-stack.ts   # CloudWatch + SNS
+│       │   └── waf-stack.ts          # Web Application Firewall
+│       └── bin/app.ts
+│
+├── scripts/                          # Automation scripts
+│   ├── setup.sh                      # Java/SDK setup (macOS/Linux)
+│   ├── backup-postgres.sh            # PostgreSQL backup
+│   ├── restore-postgres.sh           # PostgreSQL restore
+│   ├── backup-redis.sh               # Redis backup
+│   ├── restore-redis.sh              # Redis restore
+│   └── db-health.sh                  # Database health check
+│
+├── docker-compose.local.yml          # Local development stack
+├── Makefile                          # Convenient commands
+└── Documentation files               # README, setup guides, etc.
+```
+
+### Data Flow
+
+1. **User Authentication**
+   - User submits login credentials → Frontend sends to `/auth/login`
+   - Backend validates, returns JWT access + refresh tokens
+   - Frontend stores tokens in localStorage, includes in Authorization header
+
+2. **Real-time Presence**
+   - User location updated every 30 seconds
+   - Sent via REST → Backend stores in Redis geospatial index
+   - Other users query `/nearby` endpoint → Returns users within radius
+   - MapView renders user avatars at coordinates
+
+3. **Post Feed**
+   - User creates post → Stored in PostgreSQL, published to Kafka
+   - Other users receive feed updates via WebSocket `/topic/feed`
+   - Like/Comment events → Published to Kafka → Stored in PostgreSQL
+
+4. **WebSocket Chat**
+   - User connects to `/ws/chat/{conversationId}`
+   - Messages received → Stored in Cassandra (time-series DB)
+   - Delivered to recipient via WebSocket
+   - Read receipts published back to sender
+
+### Service Responsibilities
+
+| Service | Database | Technology | Features |
+|---------|----------|-----------|----------|
+| **Auth** | PostgreSQL | Spring Security + JWT | Register, Login, Token refresh, Logout |
+| **User** | PostgreSQL | Spring Data JPA | Profile, Settings, Privacy, Followers |
+| **Presence** | Redis | Geospatial | Nearby users, User status, Last seen |
+| **Posts** | PostgreSQL | Spring Data JPA | Create, Like, Comment, Feed, Search |
+| **Chat** | Cassandra | STOMP WebSocket | Messages, Conversations, Read receipts |
+| **Feed** | PostgreSQL + Kafka | Event-driven | Personalized feed, Notifications |
+| **Gateway** | Redis | Spring Cloud Gateway | Routing, JWT validation, Rate limit |
+
 ## 🎯 What Has Been Delivered
 
 ### **1. AWS Cloud Infrastructure (Infrastructure as Code)**

@@ -1,6 +1,54 @@
 # 🚀 Live Presence - Quick Reference
 
+## Prerequisites
+
+### 1. Java 21 (Required for Backend)
+```bash
+# Check if installed
+java -version          # Must return "21.x"
+javac -version         # Must return "21.x"
+
+# If not installed, see: JAVA_SETUP.md
+make install-java      # Automatic install via SDKMAN
+```
+
+### 2. AWS Setup (For Deployment)
+```bash
+# Configure AWS credentials
+aws configure
+
+# Verify access
+aws sts get-caller-identity
+```
+
+### 3. Node.js 18+ (For CDK & Frontend)
+```bash
+# Verify
+node --version         # Must be 18+
+npm --version
+```
+
+---
+
 ## Essential Commands
+
+### Local Development
+```bash
+# Start local stack (all services)
+make start-local
+
+# Stop services
+make stop-local
+
+# Run backend only
+make run
+
+# Build backend
+make build
+
+# Check health
+curl http://localhost:8080/actuator/health
+```
 
 ### AWS CDK Deployment
 ```bash

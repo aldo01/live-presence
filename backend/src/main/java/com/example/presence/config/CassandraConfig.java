@@ -3,6 +3,7 @@ package com.example.presence.config;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.context.annotation.Bean;
+import org.springframework.context.annotation.Primary;
 import java.net.InetSocketAddress;
 import java.util.ArrayList;
 import java.util.List;
@@ -60,6 +61,7 @@ public class CassandraConfig extends AbstractCassandraConfiguration {
   }
 
   @Bean
+  @Primary
   public CqlSession cqlSession() {
     // contactPoints may be a comma separated list like host:port
     String[] cps = contactPoints.split(",");
@@ -77,7 +79,9 @@ public class CassandraConfig extends AbstractCassandraConfiguration {
       addrs.add(new InetSocketAddress(host, p));
     }
 
-    CqlSession.Builder builder = CqlSession.builder().withLocalDatacenter(localDatacenter);
+    var builder = CqlSession.builder()
+      .withLocalDatacenter(localDatacenter)
+      .withKeyspace(keyspaceName);
     for (InetSocketAddress a : addrs) {
       builder.addContactPoint(a);
     }

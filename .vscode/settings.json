@@ -1,4 +1,0 @@
-{
-    "typescript.tsserver.maxTsServerMemory": 8192,
-    "github.copilot.chat.tools.memory.enabled": true
-}

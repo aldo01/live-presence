@@ -3,9 +3,9 @@ server:
 
 spring:
   datasource:
-    url: ${SPRING_DATASOURCE_URL:jdbc:postgresql://localhost:5432/presence}
-    username: ${SPRING_DATASOURCE_USERNAME:presence}
-    password: ${SPRING_DATASOURCE_PASSWORD:presence}
+    url: ${SPRING_DATASOURCE_URL:jdbc:postgresql://localhost:5432/livepresence}
+    username: ${SPRING_DATASOURCE_USERNAME:postgres}
+    password: ${SPRING_DATASOURCE_PASSWORD:postgres}
   jpa:
     hibernate:
       ddl-auto: none  # Disable schema validation - we use Flyway for schema management
@@ -26,6 +26,7 @@ spring:
       local-datacenter: ${SPRING_DATA_CASSANDRA_LOCAL_DATACENTER:datacenter1}
       schema-action: ${SPRING_DATA_CASSANDRA_SCHEMA_ACTION:none}
       port: 9042
+      session-name: default
 
 app:
   jwt:

@@ -1,0 +1,10 @@
+spring:
+  autoconfigure:
+    exclude:
+      - org.springframework.boot.autoconfigure.cassandra.CassandraAutoConfiguration
+      - org.springframework.data.cassandra.repository.support.CassandraRepositoriesAutoConfiguration
+
+logging:
+  level:
+    org.springframework.data.cassandra: OFF
+    com.datastax: OFF

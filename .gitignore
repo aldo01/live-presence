@@ -1,0 +1,32 @@
+# macOS
+.DS_Store
+
+# Environment / local developer config
+.env
+.env.*
+!.env.example
+.envrc
+.jvmrc
+.sdkmanrc
+.Java-version
+
+# IDEs
+.idea/
+*.iml
+.vscode/
+
+# Java / Gradle
+**/.gradle/
+**/build/
+backend/bin/
+services/**/bin/
+bin/
+*.class
+
+# Node / Vite
+**/node_modules/
+**/dist/
+**/.vite/
+
+# AWS CDK
+infrastructure/cdk/cdk.out/

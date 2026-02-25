@@ -171,9 +171,7 @@ services:
       - "3000:3000"
     depends_on:
       - backend
-    volumes:
-      - ./frontend:/app
-      - /app/node_modules
+    # Use built image content for frontend to avoid host-volume permission issues
     networks:
       - live-presence-network
     restart: unless-stopped
