@@ -48,6 +48,76 @@ cd frontend && npm install && npm run dev
 - Backend API: http://localhost:8080
 - Health Check: http://localhost:8080/actuator/health
 
+---
+
+## ✨ Latest App Updates (UI + Real-time)
+
+### Design / UX
+- **Compact Facebook-style header** on the Live page: icon-only actions (Map/Feed toggle, Messages, Notifications, Profile, Live location).
+- **Unread badges** for Messages and Notifications.
+- **Vibe/interest pills** are compact (no “big buttons”).
+
+### New Functionality
+- **Messenger-style Messages dropdown** (top bar): shows your conversations, last message preview, and unread counts.
+- **Activity Notifications** (bell): persisted + real-time notifications for likes, reactions, comments, and incoming messages.
+
+### Messages API (REST)
+
+Protected endpoints (Bearer JWT required):
+
+- `POST /api/conversations`
+   - Creates (or returns existing) 1:1 conversation with `{ "targetUserId": "<uuid>" }`
+- `GET /api/conversations`
+   - Lists your conversations for the Messages dropdown (newest-first)
+- `POST /api/conversations/{id}/read`
+   - Marks a conversation as read (resets your unread counter)
+- `GET /api/conversations/{id}/messages`
+   - Loads recent messages for a conversation
+
+### Notifications API (REST)
+
+Protected endpoints (Bearer JWT required):
+
+- `GET /api/notifications?limit=30`
+   - Returns `{ unreadCount, items: [...] }` (items are newest-first)
+- `POST /api/notifications/read`
+   - Marks all notifications as read and returns `{ success: true, updated: <count> }`
+
+Example response:
+
+```json
+{
+   "unreadCount": 2,
+   "items": [
+      {
+         "id": "9d00c6a9-5b6f-4d6e-bf2b-2a8b2f76d2a1",
+         "type": "POST_LIKED",
+         "actorId": "...",
+         "actorDisplayName": "User 444",
+         "actorAvatarUrl": null,
+         "postId": "...",
+         "commentId": null,
+         "conversationId": null,
+         "preview": "[notif-test] hello from user222",
+         "isRead": false,
+         "createdAt": "2026-02-26T10:12:34.567Z"
+      }
+   ]
+}
+```
+
+### Real-time (WebSocket / STOMP)
+
+- WebSocket endpoint: `GET /ws` (SockJS enabled)
+- STOMP **CONNECT must include** header: `Authorization: Bearer <accessToken>`
+- Subscriptions:
+   - `/user/queue/notifications` → bell notifications
+   - `/user/queue/messages` → message toasts / message dropdown updates
+   - `/topic/chat/{conversationId}` → live chat stream for a conversation
+
+Send messages:
+- `/app/chat.send/{conversationId}`
+
 See [JAVA_SETUP.md](./JAVA_SETUP.md) for detailed installation instructions.
 
 ---
@@ -211,10 +281,14 @@ live-presence/
    - Like/Comment events → Published to Kafka → Stored in PostgreSQL
 
 4. **WebSocket Chat**
-   - User connects to `/ws/chat/{conversationId}`
-   - Messages received → Stored in Cassandra (time-series DB)
-   - Delivered to recipient via WebSocket
-   - Read receipts published back to sender
+   - Client connects to `/ws` (STOMP/SockJS) with `Authorization: Bearer <token>`
+   - Client sends to `/app/chat.send/{conversationId}`
+   - Conversation stream broadcasts on `/topic/chat/{conversationId}`
+   - Recipients receive `/user/queue/messages` updates
+
+5. **Activity Notifications**
+   - Like/comment/reaction/message events create a persistent notification (PostgreSQL)
+   - Real-time push delivered to `/user/queue/notifications`
 
 ### Service Responsibilities
 
