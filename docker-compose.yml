@@ -152,6 +152,9 @@ services:
     environment:
       SPRING_PROFILES_ACTIVE: local
       SERVER_PORT: 8080
+      # Gateway pins Spring Cloud to a release train that predates this Boot
+      # version; the strict compatibility check is not needed for local dev.
+      SPRING_CLOUD_COMPATIBILITY_VERIFIER_ENABLED: "false"
       REDIS_HOST: redis
       REDIS_PORT: 6379
       REDIS_SSL_ENABLED: "false"
