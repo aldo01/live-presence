@@ -1,5 +1,6 @@
 import React, { useState } from "react";
 import { toggleLike, addComment, deletePost, reactToPost, removeReaction, getReactions } from "../api";
+import { FALLBACK_VIBES, buildVibeIndex, vibeEmoji, vibeLabel, vibeColor } from "../vibes";
 
 // Format counts like 966K, 18.5K, 9.7M
 function formatCount(count) {
@@ -21,7 +22,11 @@ const REACTIONS = [
   { type: 'ANGRY', emoji: '😠', color: '#e9710f' },
 ];
 
-export default function PostFeed({ posts, auth, onUpdate, onViewProfile }) {
+export default function PostFeed({ posts, auth, onUpdate, onViewProfile, vibes }) {
+  const vibeIdx = React.useMemo(
+    () => buildVibeIndex(Array.isArray(vibes) && vibes.length > 0 ? vibes : FALLBACK_VIBES),
+    [vibes]
+  );
   const [commentTexts, setCommentTexts] = useState({});
   const [showComments, setShowComments] = useState({});
   const [showReactionPicker, setShowReactionPicker] = useState({});
@@ -113,6 +118,10 @@ export default function PostFeed({ posts, auth, onUpdate, onViewProfile }) {
         const viewsCount = post.viewsCount || 0;
         const comments = post.comments || [];
         const isMyPost = post.authorId === auth.userId;
+        const authorIsLive = post.authorLive || post.authorIsLive || false;
+        const vibeList = Array.isArray(post.interests) && post.interests.length > 0
+          ? post.interests
+          : (post.interest ? [post.interest] : []);
 
         return (
           <div
@@ -146,7 +155,7 @@ export default function PostFeed({ posts, auth, onUpdate, onViewProfile }) {
                   }}
                 >
                   {post.authorName?.charAt(0).toUpperCase() || "U"}
-                  {post.authorLive && (
+                  {authorIsLive && (
                     <div style={{
                       position: "absolute",
                       bottom: 0,
@@ -193,24 +202,31 @@ export default function PostFeed({ posts, auth, onUpdate, onViewProfile }) {
               {post.content}
             </div>
 
-            {/* Interests */}
-            {post.interests && post.interests.length > 0 && (
+            {/* Vibe / Interest */}
+            {vibeList.length > 0 && (
               <div style={{ display: "flex", flexWrap: "wrap", gap: "6px", marginBottom: "16px" }}>
-                {post.interests.map((interest, idx) => (
-                  <span
-                    key={idx}
-                    style={{
-                      padding: "4px 10px",
-                      borderRadius: "12px",
-                      background: "#f3f4f6",
-                      color: "#667eea",
-                      fontSize: "12px",
-                      fontWeight: "500",
-                    }}
-                  >
-                    {interest}
-                  </span>
-                ))}
+                {vibeList.map((interest, idx) => {
+                  const color = vibeColor(vibeIdx, interest);
+                  return (
+                    <span
+                      key={idx}
+                      style={{
+                        padding: "4px 10px",
+                        borderRadius: "12px",
+                        background: `${color}1a`,
+                        color: color,
+                        fontSize: "12px",
+                        fontWeight: "600",
+                        display: "inline-flex",
+                        alignItems: "center",
+                        gap: "4px",
+                      }}
+                    >
+                      <span>{vibeEmoji(vibeIdx, interest)}</span>
+                      {vibeLabel(vibeIdx, interest)}
+                    </span>
+                  );
+                })}
               </div>
             )}
 
