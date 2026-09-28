@@ -1,6 +1,8 @@
 package com.livepresence.gateway.filter;
 
 import com.livepresence.gateway.util.JwtUtil;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.cloud.gateway.filter.GatewayFilter;
 import org.springframework.cloud.gateway.filter.factory.AbstractGatewayFilterFactory;
 import org.springframework.http.HttpStatus;
@@ -11,6 +13,8 @@ import reactor.core.publisher.Mono;
 
 @Component
 public class AuthenticationFilter extends AbstractGatewayFilterFactory<AuthenticationFilter.Config> {
+
+  private static final Logger log = LoggerFactory.getLogger(AuthenticationFilter.class);
 
   private final JwtUtil jwtUtil;
 
@@ -46,14 +50,15 @@ public class AuthenticationFilter extends AbstractGatewayFilterFactory<Authentic
         String name = jwtUtil.extractName(token);
 
         ServerHttpRequest modifiedRequest = exchange.getRequest().mutate()
-            .header("X-User-Id", userId)
-            .header("X-User-Email", email)
-            .header("X-User-Name", name)
+            .header("X-User-Id", userId != null ? userId : "")
+            .header("X-User-Email", email != null ? email : "")
+            .header("X-User-Name", name != null ? name : "")
             .build();
 
         return chain.filter(exchange.mutate().request(modifiedRequest).build());
         
       } catch (Exception e) {
+        log.warn("JWT authentication failed", e);
         return onError(exchange, "Token validation failed: " + e.getMessage(), HttpStatus.UNAUTHORIZED);
       }
     };
