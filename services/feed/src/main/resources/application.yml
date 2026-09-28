@@ -1,0 +1,58 @@
+server:
+  port: ${SERVER_PORT:8086}
+
+spring:
+  application:
+    name: feed-service
+
+  datasource:
+    url: ${SPRING_DATASOURCE_URL:jdbc:postgresql://localhost:5432/livepresence}
+    username: ${SPRING_DATASOURCE_USERNAME:postgres}
+    password: ${SPRING_DATASOURCE_PASSWORD:postgres}
+    hikari:
+      maximum-pool-size: ${DB_POOL_MAX:15}
+      pool-name: feed-pool
+
+  jpa:
+    hibernate:
+      # The posts/comments/likes/reactions tables (with FKs into core tables) are
+      # owned by core's Flyway migration. This service maps the existing tables.
+      ddl-auto: none
+    open-in-view: false
+    properties:
+      hibernate:
+        format_sql: true
+
+  # Flyway intentionally disabled: core owns the shared schema DDL.
+  flyway:
+    enabled: false
+
+  data:
+    redis:
+      host: ${SPRING_DATA_REDIS_HOST:localhost}
+      port: ${SPRING_DATA_REDIS_PORT:6379}
+      password: ${SPRING_DATA_REDIS_PASSWORD:}
+
+  kafka:
+    bootstrap-servers: ${SPRING_KAFKA_BOOTSTRAP_SERVERS:localhost:9092}
+
+app:
+  kafka:
+    # When false, the Kafka producer beans are not created and post events are
+    # simply not published (best-effort fan-out). Enable in the full stack.
+    enabled: ${APP_KAFKA_ENABLED:false}
+  jwt:
+    secret: ${APP_JWT_SECRET:dev_secret_key_minimum_32_characters_required_for_jwt_signing_and_verification}
+
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,info,metrics,prometheus
+  endpoint:
+    health:
+      show-details: always
+
+logging:
+  level:
+    org.springframework.security: INFO
