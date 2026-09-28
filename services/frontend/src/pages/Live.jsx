@@ -7,6 +7,10 @@ import {
   updateInterest,
   createConversation,
   getMessages,
+  listConversations,
+  markConversationRead,
+  listNotifications,
+  markAllNotificationsRead,
   presenceHeartbeat,
   fetchNearby,
   setLive,
@@ -22,12 +26,6 @@ import ChatWindow from "../components/ChatWindow";
 import ProfileEdit from "./ProfileEdit";
 import UserProfile from "../components/UserProfile";
 
-const INTERESTS = [
-  "General", "Sports", "Music", "Food", "Tech", "Art", "Travel", "Gaming",
-  "Fitness", "Photography", "Movies", "Books", "Fashion", "Dancing", "Cooking",
-  "Hiking", "Coffee", "Pets", "Business", "Wellness"
-];
-
 export default function Live({ auth }) {
   const [me, setMe] = useState(null);
   const [users, setUsers] = useState([]);
@@ -42,6 +40,36 @@ export default function Live({ auth }) {
   const [radiusKm, setRadiusKm] = useState(20);
   const [filterInterest, setFilterInterest] = useState("");
 
+  // Vibe catalog comes from the server (falls back to a local copy until it loads).
+  const [vibes, setVibes] = useState(FALLBACK_VIBES);
+  const vibeIndex = useMemo(() => buildVibeIndex(vibes), [vibes]);
+  const selectableVibes = useMemo(
+    () => vibes.filter((v) => v.key !== "General"),
+    [vibes]
+  );
+  const topVibes = useMemo(
+    () => selectableVibes.slice(0, 7).map((v) => v.key),
+    [selectableVibes]
+  );
+  const moreVibes = useMemo(
+    () => selectableVibes.slice(7).map((v) => v.key),
+    [selectableVibes]
+  );
+
+  useEffect(() => {
+    let alive = true;
+    fetchVibes()
+      .then((list) => {
+        if (alive && Array.isArray(list) && list.length > 0) setVibes(list);
+      })
+      .catch(() => {
+        /* keep fallback vibes */
+      });
+    return () => {
+      alive = false;
+    };
+  }, []);
+
   // chat state
   const [chatOpen, setChatOpen] = useState(false);
   const [chatUser, setChatUser] = useState(null);
@@ -51,6 +79,20 @@ export default function Live({ auth }) {
   const [wsConnected, setWsConnected] = useState(false);
   const [unreadMessages, setUnreadMessages] = useState(new Map()); // userId -> unread count
   const [totalUnread, setTotalUnread] = useState(0);
+  const [lastMessageNotifs, setLastMessageNotifs] = useState(new Map()); // senderId -> { conversationId, senderName, timestamp }
+
+  // Messenger-style conversation list
+  const [showMessagesList, setShowMessagesList] = useState(false);
+  const [conversationList, setConversationList] = useState([]);
+  const [loadingConversations, setLoadingConversations] = useState(false);
+  const messagesListRef = useRef(null);
+
+  // Notifications bell
+  const [showNotificationsList, setShowNotificationsList] = useState(false);
+  const [notifications, setNotifications] = useState([]);
+  const [loadingNotifications, setLoadingNotifications] = useState(false);
+  const [unreadNotifications, setUnreadNotifications] = useState(0);
+  const notificationsListRef = useRef(null);
   
   // Pagination and new posts state
   const [page, setPage] = useState(0);
@@ -98,13 +140,22 @@ export default function Live({ auth }) {
       
       // Subscribe to personal message notifications
       if (auth.userId) {
-        stomp.subscribe(`/user/${auth.userId}/queue/messages`, (message) => {
+        stomp.subscribe(`/user/queue/messages`, (message) => {
           try {
             const notification = JSON.parse(message.body);
             console.log('Message notification received:', notification);
             
             // Only show notification if chat is closed or different conversation
             if (!chatOpen || conversationId !== notification.conversationId) {
+              setLastMessageNotifs(prev => {
+                const next = new Map(prev);
+                next.set(notification.senderId, {
+                  conversationId: notification.conversationId,
+                  senderName: notification.senderName,
+                  timestamp: notification.timestamp,
+                });
+                return next;
+              });
               setUnreadMessages(prev => {
                 const newMap = new Map(prev);
                 const current = newMap.get(notification.senderId) || 0;
@@ -115,6 +166,34 @@ export default function Live({ auth }) {
             }
           } catch (e) {
             console.error('Error parsing message notification:', e);
+          }
+        });
+
+        stomp.subscribe(`/user/queue/notifications`, (message) => {
+          try {
+            const n = JSON.parse(message.body);
+            setNotifications((prev) => {
+              const next = [
+                {
+                  id: n.id,
+                  type: n.type,
+                  actorId: n.actorId,
+                  actorDisplayName: n.actorDisplayName,
+                  actorAvatarUrl: n.actorAvatarUrl,
+                  postId: n.postId,
+                  commentId: n.commentId,
+                  conversationId: n.conversationId,
+                  preview: n.preview,
+                  isRead: false,
+                  createdAt: n.createdAt,
+                },
+                ...(prev || []),
+              ];
+              return next.slice(0, 30);
+            });
+            setUnreadNotifications((c) => c + 1);
+          } catch (e) {
+            console.error('Error parsing notification:', e);
           }
         });
       }
@@ -180,7 +259,7 @@ export default function Live({ auth }) {
       try {
         // Only send heartbeat if user is live
         if (me.live) {
-          await presenceHeartbeat(pos.lat, pos.lon);
+          await presenceHeartbeat(pos.lat, pos.lon, me.displayName, me.interest, true);
         }
 
         const [usersList] = await Promise.all([
@@ -276,6 +355,11 @@ export default function Live({ auth }) {
         newMap.delete(user.userId);
         return newMap;
       });
+      setLastMessageNotifs(prev => {
+        const next = new Map(prev);
+        next.delete(user.userId);
+        return next;
+      });
 
       const res = await createConversation(user.userId);
       setConversationId(res.conversationId);
@@ -291,6 +375,13 @@ export default function Live({ auth }) {
           sentAt: m.createdAt || m.sentAt || m.createdAtIso,
         }))
       );
+
+      // Mark read server-side (keeps conversation list unread counters accurate)
+      try {
+        await markConversationRead(res.conversationId);
+      } catch (e) {
+        // non-fatal
+      }
     } catch (e) {
       console.error("Failed to open chat:", e);
     }
@@ -299,6 +390,57 @@ export default function Live({ auth }) {
   const viewUserProfile = (user) => {
     setViewingUserId(user.userId);
   };
+
+  const refreshConversationList = async () => {
+    setLoadingConversations(true);
+    try {
+      const list = await listConversations();
+      setConversationList(Array.isArray(list) ? list : []);
+    } catch (e) {
+      console.error("Failed to load conversations:", e);
+      setConversationList([]);
+    } finally {
+      setLoadingConversations(false);
+    }
+  };
+
+  const refreshNotifications = async () => {
+    setLoadingNotifications(true);
+    try {
+      const res = await listNotifications(30);
+      setUnreadNotifications(res?.unreadCount || 0);
+      setNotifications(Array.isArray(res?.items) ? res.items : []);
+    } catch (e) {
+      console.error("Failed to load notifications:", e);
+      setNotifications([]);
+    } finally {
+      setLoadingNotifications(false);
+    }
+  };
+
+  // Close messages list on outside click
+  useEffect(() => {
+    if (!showMessagesList) return;
+    const onDoc = (e) => {
+      if (!messagesListRef.current) return;
+      if (messagesListRef.current.contains(e.target)) return;
+      setShowMessagesList(false);
+    };
+    document.addEventListener("mousedown", onDoc);
+    return () => document.removeEventListener("mousedown", onDoc);
+  }, [showMessagesList]);
+
+  // Close notifications list on outside click
+  useEffect(() => {
+    if (!showNotificationsList) return;
+    const onDoc = (e) => {
+      if (!notificationsListRef.current) return;
+      if (notificationsListRef.current.contains(e.target)) return;
+      setShowNotificationsList(false);
+    };
+    document.addEventListener("mousedown", onDoc);
+    return () => document.removeEventListener("mousedown", onDoc);
+  }, [showNotificationsList]);
 
   const sendMsg = () => {
     const body = msgDraft.trim();
@@ -454,6 +596,28 @@ export default function Live({ auth }) {
     );
   }
 
+  const headerIconBtn = (active = false, variant = "neutral") => ({
+    width: "40px",
+    height: "40px",
+    borderRadius: "50%",
+    border: "none",
+    background:
+      variant === "brand"
+        ? "#667eea"
+        : variant === "success"
+          ? "#10b981"
+          : active
+            ? "#667eea"
+            : "#f3f4f6",
+    color: variant === "neutral" && !active ? "#111827" : "white",
+    cursor: "pointer",
+    display: "flex",
+    alignItems: "center",
+    justifyContent: "center",
+    position: "relative",
+    flex: "0 0 auto",
+  });
+
   return (
     <div style={{ height: "100vh", display: "flex", flexDirection: "column", background: "#f9fafb" }}>
       {/* Header */}
@@ -465,45 +629,45 @@ export default function Live({ auth }) {
           display: "flex",
           justifyContent: "space-between",
           alignItems: "center",
+          gap: "12px",
+          flexWrap: "wrap",
         }}
       >
-        <div style={{ display: "flex", gap: "24px", alignItems: "center" }}>
-          <div style={{ fontSize: "24px", fontWeight: "800", color: "#667eea" }}>
+        <div style={{ display: "flex", gap: "12px", alignItems: "center", minWidth: 0 }}>
+          <div style={{ fontSize: "20px", fontWeight: "800", color: "#667eea", whiteSpace: "nowrap" }}>
             Live Presence
           </div>
-          <div style={{ display: "flex", gap: "8px" }}>
+          <div style={{ display: "flex", gap: "8px", flex: "0 0 auto" }}>
             <button
               onClick={() => setView("map")}
               style={{
-                padding: "8px 20px",
-                borderRadius: "10px",
-                border: "none",
-                background: view === "map" ? "#667eea" : "#f3f4f6",
-                color: view === "map" ? "white" : "#374151",
-                fontWeight: "600",
-                cursor: "pointer",
+                ...headerIconBtn(view === "map"),
               }}
+              title="Map"
             >
-              🗺️ Map
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
+                <path d="M9 18l-6 3V6l6-3 6 3 6-3v15l-6 3-6-3z" stroke="currentColor" strokeWidth="2" strokeLinejoin="round" />
+                <path d="M9 3v15" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
+                <path d="M15 6v15" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
+              </svg>
             </button>
             <button
               onClick={() => setView("feed")}
               style={{
-                padding: "8px 20px",
-                borderRadius: "10px",
-                border: "none",
-                background: view === "feed" ? "#667eea" : "#f3f4f6",
-                color: view === "feed" ? "white" : "#374151",
-                fontWeight: "600",
-                cursor: "pointer",
+                ...headerIconBtn(view === "feed"),
               }}
+              title="Feed"
             >
-              📰 Feed
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
+                <path d="M4 6h16v14H4V6z" stroke="currentColor" strokeWidth="2" />
+                <path d="M8 10h8" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
+                <path d="M8 14h8" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
+              </svg>
             </button>
           </div>
         </div>
 
-        <div style={{ display: "flex", gap: "16px", alignItems: "center" }}>
+        <div style={{ display: "flex", gap: "10px", alignItems: "center", flex: "0 0 auto" }}>
           <div style={{ textAlign: "right" }}>
             <div style={{ fontWeight: "600", fontSize: "14px" }}>{me?.displayName || auth.displayName}</div>
             <div style={{ fontSize: "12px", color: "#6b7280" }}>
@@ -513,20 +677,9 @@ export default function Live({ auth }) {
           <button
             onClick={() => setShowProfileEdit(true)}
             style={{
-              width: "40px",
-              height: "40px",
-              borderRadius: "50%",
-              background: "linear-gradient(135deg, #667eea 0%, #764ba2 100%)",
-              display: "flex",
-              alignItems: "center",
-              justifyContent: "center",
-              color: "white",
-              fontWeight: "700",
-              fontSize: "16px",
-              border: "none",
-              cursor: "pointer",
-              boxShadow: "0 2px 8px rgba(102, 126, 234, 0.3)",
-              position: "relative"
+              ...headerIconBtn(false, "brand"),
+              fontWeight: "800",
+              fontSize: "15px",
             }}
             title="Edit Profile"
           >
@@ -546,68 +699,365 @@ export default function Live({ auth }) {
             )}
           </button>
           
-          {/* Messages Button with Notification Badge */}
-          <button
-            onClick={() => setView("map")}
-            style={{
-              padding: "10px 20px",
-              borderRadius: "10px",
-              border: "none",
-              background: "linear-gradient(135deg, #667eea 0%, #764ba2 100%)",
-              color: "white",
-              fontWeight: "600",
-              cursor: "pointer",
-              display: "flex",
-              alignItems: "center",
-              gap: "8px",
-              position: "relative",
-            }}
-            title={totalUnread > 0 ? `${totalUnread} unread messages` : "Messages"}
-          >
-            💬 Messages
-            {totalUnread > 0 && (
-              <div style={{
-                position: "absolute",
-                top: "-6px",
-                right: "-6px",
-                minWidth: "20px",
-                height: "20px",
-                background: "#ef4444",
-                color: "white",
-                borderRadius: "10px",
-                display: "flex",
-                alignItems: "center",
-                justifyContent: "center",
-                fontSize: "11px",
-                fontWeight: "700",
-                padding: "0 6px",
-                border: "2px solid white",
-                boxShadow: "0 2px 4px rgba(0,0,0,0.2)",
-                animation: "pulse 2s infinite",
-              }}>
-                {totalUnread > 99 ? "99+" : totalUnread}
+          <div ref={messagesListRef} style={{ position: "relative" }}>
+            {/* Messages Button with Notification Badge */}
+            <button
+              onClick={() => {
+                setShowMessagesList((v) => {
+                  const next = !v;
+                  if (!v && next) refreshConversationList();
+                  return next;
+                });
+              }}
+              style={{
+                ...headerIconBtn(false),
+              }}
+              title={totalUnread > 0 ? `${totalUnread} unread messages` : "Messages"}
+            >
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
+                <path d="M21 15a4 4 0 0 1-4 4H8l-5 3V7a4 4 0 0 1 4-4h10a4 4 0 0 1 4 4v8z" stroke="currentColor" strokeWidth="2" strokeLinejoin="round" />
+              </svg>
+              {totalUnread > 0 && (
+                <div style={{
+                  position: "absolute",
+                  top: "-6px",
+                  right: "-6px",
+                  minWidth: "20px",
+                  height: "20px",
+                  background: "#ef4444",
+                  color: "white",
+                  borderRadius: "10px",
+                  display: "flex",
+                  alignItems: "center",
+                  justifyContent: "center",
+                  fontSize: "11px",
+                  fontWeight: "700",
+                  padding: "0 6px",
+                  border: "2px solid white",
+                  boxShadow: "0 2px 4px rgba(0,0,0,0.2)",
+                }}>
+                  {totalUnread > 99 ? "99+" : totalUnread}
+                </div>
+              )}
+            </button>
+
+          {/* Messenger-style conversation list */}
+            {showMessagesList && (
+              <div
+                style={{
+                  position: "absolute",
+                  top: "48px",
+                  right: 0,
+                  width: "320px",
+                  maxHeight: "420px",
+                  overflowY: "auto",
+                  background: "white",
+                  border: "1px solid #e5e7eb",
+                  borderRadius: "14px",
+                  boxShadow: "0 10px 30px rgba(0,0,0,0.15)",
+                  zIndex: 1000,
+                }}
+              >
+              <div style={{ padding: "12px 14px", borderBottom: "1px solid #f3f4f6", fontWeight: 700 }}>
+                Messages
+              </div>
+              {loadingConversations ? (
+                <div style={{ padding: "14px", color: "#6b7280", fontSize: 14 }}>Loading…</div>
+              ) : conversationList.length === 0 ? (
+                <div style={{ padding: "14px", color: "#6b7280", fontSize: 14 }}>
+                  No conversations yet. Open a user on the map to chat.
+                </div>
+              ) : (
+                conversationList.map((c) => {
+                  const localUnread = unreadMessages.get(c.otherUserId) || 0;
+                  const unread = Math.max(localUnread, c.unreadCount || 0);
+                  const time = c.lastMessageAt
+                    ? new Date(c.lastMessageAt).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })
+                    : "";
+
+                  return (
+                    <button
+                      key={c.conversationId}
+                      onClick={async () => {
+                        setShowMessagesList(false);
+                        await openChat({
+                          userId: c.otherUserId,
+                          displayName: c.otherDisplayName,
+                          avatarUrl: c.otherAvatarUrl,
+                          live: c.otherLive,
+                        });
+                      }}
+                      style={{
+                        width: "100%",
+                        border: "none",
+                        background: "white",
+                        textAlign: "left",
+                        padding: "12px 14px",
+                        display: "flex",
+                        gap: "10px",
+                        alignItems: "center",
+                        cursor: "pointer",
+                        borderBottom: "1px solid #f3f4f6",
+                      }}
+                    >
+                      <div
+                        style={{
+                          width: 36,
+                          height: 36,
+                          borderRadius: "50%",
+                          background: "linear-gradient(135deg, #667eea 0%, #764ba2 100%)",
+                          color: "white",
+                          display: "flex",
+                          alignItems: "center",
+                          justifyContent: "center",
+                          fontWeight: 800,
+                          position: "relative",
+                          flex: "0 0 auto",
+                        }}
+                      >
+                        {(c.otherDisplayName || "U").charAt(0).toUpperCase()}
+                        {c.otherLive && (
+                          <div
+                            style={{
+                              position: "absolute",
+                              bottom: -1,
+                              right: -1,
+                              width: 10,
+                              height: 10,
+                              borderRadius: "50%",
+                              background: "#10b981",
+                              border: "2px solid white",
+                            }}
+                          />
+                        )}
+                      </div>
+
+                      <div style={{ flex: 1, minWidth: 0 }}>
+                        <div style={{ display: "flex", justifyContent: "space-between", gap: 8 }}>
+                          <div style={{ fontWeight: unread > 0 ? 800 : 700, fontSize: 14, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                            {c.otherDisplayName || "User"}
+                          </div>
+                          <div style={{ fontSize: 12, color: "#6b7280", flex: "0 0 auto" }}>{time}</div>
+                        </div>
+                        <div style={{ fontSize: 13, color: "#6b7280", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                          {c.lastMessagePreview || ""}
+                        </div>
+                      </div>
+
+                      {unread > 0 && (
+                        <div
+                          style={{
+                            minWidth: 22,
+                            height: 22,
+                            borderRadius: 11,
+                            background: "#ef4444",
+                            color: "white",
+                            display: "flex",
+                            alignItems: "center",
+                            justifyContent: "center",
+                            fontSize: 12,
+                            fontWeight: 800,
+                            padding: "0 6px",
+                          }}
+                        >
+                          {unread > 99 ? "99+" : unread}
+                        </div>
+                      )}
+                    </button>
+                  );
+                })
+              )}
               </div>
             )}
-          </button>
+          </div>
+
+          <div ref={notificationsListRef} style={{ position: "relative" }}>
+            <button
+              onClick={() => {
+                setShowNotificationsList((v) => {
+                  const next = !v;
+                  if (!v && next) {
+                    refreshNotifications();
+                    markAllNotificationsRead()
+                      .then(() => {
+                        setUnreadNotifications(0);
+                        setNotifications((prev) => (prev || []).map((x) => ({ ...x, isRead: true })));
+                      })
+                      .catch(() => {});
+                  }
+                  return next;
+                });
+              }}
+              style={{
+                ...headerIconBtn(false),
+              }}
+              title={unreadNotifications > 0 ? `${unreadNotifications} new notifications` : "Notifications"}
+            >
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
+                <path d="M18 8a6 6 0 0 0-12 0c0 7-3 7-3 7h18s-3 0-3-7z" stroke="currentColor" strokeWidth="2" strokeLinejoin="round" />
+                <path d="M13.73 21a2 2 0 0 1-3.46 0" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
+              </svg>
+              {unreadNotifications > 0 && (
+                <div
+                  style={{
+                    position: "absolute",
+                    top: "-6px",
+                    right: "-6px",
+                    minWidth: "20px",
+                    height: "20px",
+                    background: "#ef4444",
+                    color: "white",
+                    borderRadius: "10px",
+                    display: "flex",
+                    alignItems: "center",
+                    justifyContent: "center",
+                    fontSize: "11px",
+                    fontWeight: "800",
+                    padding: "0 6px",
+                    border: "2px solid white",
+                    boxShadow: "0 2px 4px rgba(0,0,0,0.2)",
+                  }}
+                >
+                  {unreadNotifications > 99 ? "99+" : unreadNotifications}
+                </div>
+              )}
+            </button>
+
+            {showNotificationsList && (
+              <div
+                style={{
+                  position: "absolute",
+                  top: "48px",
+                  right: 0,
+                  width: "340px",
+                  maxHeight: "420px",
+                  overflowY: "auto",
+                  background: "white",
+                  border: "1px solid #e5e7eb",
+                  borderRadius: "14px",
+                  boxShadow: "0 10px 30px rgba(0,0,0,0.15)",
+                  zIndex: 1000,
+                }}
+              >
+                <div style={{ padding: "12px 14px", borderBottom: "1px solid #f3f4f6", fontWeight: 700 }}>
+                  Notifications
+                </div>
+                {loadingNotifications ? (
+                  <div style={{ padding: "14px", color: "#6b7280", fontSize: 14 }}>Loading…</div>
+                ) : notifications.length === 0 ? (
+                  <div style={{ padding: "14px", color: "#6b7280", fontSize: 14 }}>No notifications yet.</div>
+                ) : (
+                  notifications.map((n) => {
+                    const actor = n.actorDisplayName || "Someone";
+                    const time = n.createdAt
+                      ? new Date(n.createdAt).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })
+                      : "";
+                    const primary =
+                      n.type === "POST_LIKED"
+                        ? `${actor} liked your post`
+                        : n.type === "POST_REACTED"
+                          ? `${actor} reacted to your post`
+                          : n.type === "POST_COMMENTED"
+                            ? `${actor} commented on your post`
+                            : n.type === "MESSAGE_RECEIVED"
+                              ? `${actor} sent you a message`
+                              : `${actor}`;
+
+                    return (
+                      <button
+                        key={n.id}
+                        onClick={async () => {
+                          setShowNotificationsList(false);
+
+                          if (n.type === "MESSAGE_RECEIVED" && n.actorId) {
+                            await openChat({
+                              userId: n.actorId,
+                              displayName: actor,
+                              avatarUrl: n.actorAvatarUrl,
+                              live: false,
+                            });
+                          }
+                        }}
+                        style={{
+                          width: "100%",
+                          border: "none",
+                          background: "white",
+                          textAlign: "left",
+                          padding: "12px 14px",
+                          display: "flex",
+                          gap: "10px",
+                          alignItems: "flex-start",
+                          cursor: "pointer",
+                          borderBottom: "1px solid #f3f4f6",
+                        }}
+                      >
+                        <div
+                          style={{
+                            width: 36,
+                            height: 36,
+                            borderRadius: "50%",
+                            background: "linear-gradient(135deg, #667eea 0%, #764ba2 100%)",
+                            color: "white",
+                            display: "flex",
+                            alignItems: "center",
+                            justifyContent: "center",
+                            fontWeight: 800,
+                            flex: "0 0 auto",
+                            marginTop: 2,
+                          }}
+                        >
+                          {actor.charAt(0).toUpperCase()}
+                        </div>
+
+                        <div style={{ flex: 1, minWidth: 0 }}>
+                          <div style={{ display: "flex", justifyContent: "space-between", gap: 8 }}>
+                            <div
+                              style={{
+                                fontWeight: n.isRead ? 700 : 800,
+                                fontSize: 14,
+                                overflow: "hidden",
+                                textOverflow: "ellipsis",
+                                whiteSpace: "nowrap",
+                              }}
+                            >
+                              {primary}
+                            </div>
+                            <div style={{ fontSize: 12, color: "#6b7280", flex: "0 0 auto" }}>{time}</div>
+                          </div>
+                          {n.preview && (
+                            <div
+                              style={{
+                                fontSize: 13,
+                                color: "#6b7280",
+                                overflow: "hidden",
+                                textOverflow: "ellipsis",
+                                whiteSpace: "nowrap",
+                              }}
+                            >
+                              {n.preview}
+                            </div>
+                          )}
+                        </div>
+                      </button>
+                    );
+                  })
+                )}
+              </div>
+            )}
+          </div>
           
           {/* Location Toggle Button */}
           <button
             onClick={toggleLive}
             style={{
-              padding: "10px 20px",
-              borderRadius: "10px",
-              border: "none",
-              background: me?.live ? "#10b981" : "#6b7280",
-              color: "white",
-              fontWeight: "600",
-              cursor: "pointer",
-              display: "flex",
-              alignItems: "center",
-              gap: "8px",
+              ...headerIconBtn(false, me?.live ? "success" : "neutral"),
             }}
             title={me?.live ? "Turn off location sharing" : "Turn on location sharing"}
           >
-            📍 Location {me?.live ? "On" : "Off"}
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
+              <path d="M12 21s7-4.35 7-10a7 7 0 0 0-14 0c0 5.65 7 10 7 10z" stroke="currentColor" strokeWidth="2" strokeLinejoin="round" />
+              <path d="M12 11a2 2 0 1 0 0-4 2 2 0 0 0 0 4z" stroke="currentColor" strokeWidth="2" />
+            </svg>
           </button>
         </div>
       </div>
@@ -629,64 +1079,42 @@ export default function Live({ auth }) {
           <button
             onClick={() => setFilterInterest("")}
             style={{
-              padding: "10px 20px",
-              borderRadius: "24px",
+              padding: "6px 12px",
+              borderRadius: "999px",
               border: "none",
               background: filterInterest === "" ? "#1a1a1a" : "#f3f4f6",
               color: filterInterest === "" ? "white" : "#6b7280",
-              fontSize: "14px",
+              fontSize: "13px",
               fontWeight: "600",
               cursor: "pointer",
               transition: "all 0.2s",
               display: "flex",
               alignItems: "center",
               gap: "6px",
-              boxShadow: filterInterest === "" ? "0 4px 12px rgba(0,0,0,0.15)" : "none",
             }}
           >
             ✨ All Vibes
           </button>
-          {INTERESTS.filter(i => i !== "General").slice(0, 7).map((interest) => {
-            const emoji = {
-              Sports: "⚽",
-              Music: "🎵",
-              Food: "🍔",
-              Tech: "💻",
-              Art: "🎨",
-              Travel: "✈️",
-              Gaming: "🎮",
-              Fitness: "💪",
-              Photography: "📸",
-              Movies: "🎬",
-              Books: "📚",
-              Fashion: "👗",
-              Dancing: "💃",
-              Cooking: "🍳",
-              Hiking: "🥾",
-              Coffee: "☕",
-              Pets: "🐾",
-              Business: "💼",
-              Wellness: "🧘",
-            }[interest] || "📌";
-            
+          {topVibes.map((interest) => {
+            const emoji = vibeEmoji(vibeIndex, interest);
+
             return (
               <button
                 key={interest}
                 onClick={() => setFilterInterest(prev => prev === interest ? "" : interest)}
                 style={{
-                  padding: "10px 20px",
-                  borderRadius: "24px",
+                  padding: "6px 12px",
+                  borderRadius: "999px",
                   border: "none",
                   background: filterInterest === interest ? "#667eea" : "#f3f4f6",
                   color: filterInterest === interest ? "white" : "#6b7280",
-                  fontSize: "14px",
+                  fontSize: "13px",
                   fontWeight: "600",
                   cursor: "pointer",
                   transition: "all 0.2s",
                   display: "flex",
                   alignItems: "center",
                   gap: "6px",
-                  boxShadow: filterInterest === interest ? "0 4px 12px rgba(102, 126, 234, 0.3)" : "none",
                 }}
               >
                 {emoji} {interest}
@@ -709,7 +1137,7 @@ export default function Live({ auth }) {
             }}
           >
             <option value="">+ More Vibes</option>
-            {INTERESTS.slice(8).map((interest) => (
+            {moreVibes.map((interest) => (
               <option key={interest} value={interest}>
                 {interest}
               </option>
@@ -804,8 +1232,8 @@ export default function Live({ auth }) {
               </div>
             )}
             
-            <PostComposer auth={auth} onPostCreated={() => refreshPosts(true)} userLocation={pos} />
-            <PostFeed posts={posts} auth={auth} onUpdate={() => refreshPosts(true)} onViewProfile={viewUserProfile} />
+            <PostComposer auth={auth} onPostCreated={() => refreshPosts(true)} userLocation={pos} vibes={vibes} />
+            <PostFeed posts={posts} auth={auth} onUpdate={() => refreshPosts(true)} onViewProfile={viewUserProfile} vibes={vibes} />
             
             {/* Loading More Indicator */}
             {loadingMore && (
