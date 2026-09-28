@@ -37,7 +37,7 @@ export default function Live({ auth }) {
   // location + nearby
   const [pos, setPos] = useState(null);
   const [geoErr, setGeoErr] = useState("");
-  const [radiusKm, setRadiusKm] = useState(10);
+  const [radiusKm, setRadiusKm] = useState(20);
   const [filterInterest, setFilterInterest] = useState("");
 
   // chat state
