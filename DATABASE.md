@@ -106,6 +106,7 @@ make db-reset
 | `post_comments` | Comment system | id, post_id, user_id, content |
 | `conversations` | 1-to-1 chats | id, user1_id, user2_id, user1_unread, user2_unread |
 | `messages` | Chat messages | id, conversation_id, sender_id, content, is_read |
+| `notifications` | Activity notifications feed | id, recipient_id, actor_id, type, post_id, comment_id, conversation_id, preview, is_read, created_at |
 | `user_follows` | Social graph | id, follower_id, following_id |
 
 ### Redis Keys
