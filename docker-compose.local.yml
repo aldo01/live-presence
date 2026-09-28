@@ -1,5 +1,3 @@
-version: '3.9'
-
 services:
   # PostgreSQL Database
   postgres:
@@ -52,6 +50,10 @@ services:
       CASSANDRA_NUM_TOKENS: 256
       MAX_HEAP_SIZE: 512M
       HEAP_NEWSIZE: 128M
+      CASSANDRA_LISTEN_ADDRESS: cassandra
+      CASSANDRA_RPC_ADDRESS: cassandra
+      CASSANDRA_BROADCAST_ADDRESS: cassandra
+      CASSANDRA_BROADCAST_RPC_ADDRESS: cassandra
     ports:
       - "9042:9042"
       - "7000:7000"
@@ -120,12 +122,40 @@ services:
       timeout: 10s
       retries: 5
 
-  # Backend Service (monolithic for now - we'll split to microservices later)
-  backend:
+  # Auth Service (signs JWTs) — dedicated microservice
+  auth:
     build:
-      context: ./backend
+      context: ./services/auth
       dockerfile: Dockerfile.local
-    container_name: live-presence-backend
+    container_name: live-presence-auth
+    environment:
+      SERVER_PORT: 8081
+      SPRING_DATASOURCE_URL: jdbc:postgresql://postgres:5432/livepresence?currentSchema=auth,public
+      SPRING_DATASOURCE_USERNAME: postgres
+      SPRING_DATASOURCE_PASSWORD: postgres
+      SPRING_KAFKA_BOOTSTRAP_SERVERS: kafka:9092
+      APP_KAFKA_ENABLED: "false"
+      APP_CORS_ALLOWED_ORIGINS: http://localhost:3000,http://localhost:5173
+      APP_JWT_SECRET: ${JWT_SECRET:-local_dev_secret_key_must_be_at_least_64_characters_long_for_jwt_signing}
+      APP_JWT_ACCESS_MINUTES: 15
+      APP_JWT_REFRESH_DAYS: 14
+    ports:
+      - "8081:8081"
+    depends_on:
+      postgres:
+        condition: service_healthy
+      kafka:
+        condition: service_healthy
+    networks:
+      - live-presence-network
+    restart: unless-stopped
+
+  # Core Service (user, presence, chat, feed, notifications) — to be split further
+  core:
+    build:
+      context: ./services/core
+      dockerfile: Dockerfile.local
+    container_name: live-presence-core
     environment:
       SPRING_PROFILES_ACTIVE: local
       SERVER_PORT: 8080
@@ -141,11 +171,14 @@ services:
       SPRING_KAFKA_BOOTSTRAP_SERVERS: kafka:9092
       SPRING_KAFKA_CONSUMER_GROUP_ID: live-presence-consumer-group
       SPRING_KAFKA_CONSUMER_AUTO_OFFSET_RESET: earliest
-      APP_JWT_SECRET: local_dev_secret_key_must_be_at_least_64_characters_long_for_jwt_signing
+      APP_CASSANDRA_ENABLED: "false"
+      APP_KAFKA_ENABLED: "false"
+      APP_JWT_SECRET: ${JWT_SECRET:-local_dev_secret_key_must_be_at_least_64_characters_long_for_jwt_signing}
       APP_JWT_ACCESS_MINUTES: 15
       APP_JWT_REFRESH_DAYS: 14
+    # Exposed on 8090 for direct debugging; clients should go through the gateway.
     ports:
-      - "8080:8080"
+      - "8090:8080"
     depends_on:
       postgres:
         condition: service_healthy
@@ -159,10 +192,122 @@ services:
       - live-presence-network
     restart: unless-stopped
 
-  # Frontend
+  # Presence Service (standalone, Redis-only geospatial presence)
+  presence:
+    build:
+      context: ./services/presence
+      dockerfile: Dockerfile.local
+    container_name: live-presence-presence
+    environment:
+      SERVER_PORT: 8083
+      SPRING_DATA_REDIS_HOST: redis
+      SPRING_DATA_REDIS_PORT: 6379
+      APP_JWT_SECRET: ${JWT_SECRET:-local_dev_secret_key_must_be_at_least_64_characters_long_for_jwt_signing}
+    ports:
+      - "8083:8083"
+    depends_on:
+      redis:
+        condition: service_healthy
+    networks:
+      - live-presence-network
+    restart: unless-stopped
+
+  # Notification Service (standalone; Postgres for storage, Redis pub/sub bridge)
+  notification:
+    build:
+      context: ./services/notification
+      dockerfile: Dockerfile.local
+    container_name: live-presence-notification
+    environment:
+      SERVER_PORT: 8085
+      SPRING_DATASOURCE_URL: jdbc:postgresql://postgres:5432/livepresence
+      SPRING_DATASOURCE_USERNAME: postgres
+      SPRING_DATASOURCE_PASSWORD: postgres
+      SPRING_DATA_REDIS_HOST: redis
+      SPRING_DATA_REDIS_PORT: 6379
+      APP_JWT_SECRET: ${JWT_SECRET:-local_dev_secret_key_must_be_at_least_64_characters_long_for_jwt_signing}
+    ports:
+      - "8085:8085"
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    networks:
+      - live-presence-network
+    restart: unless-stopped
+
+  # Feed Service (standalone; posts/comments/likes/reactions + Kafka fan-out producer)
+  feed:
+    build:
+      context: ./services/feed
+      dockerfile: Dockerfile.local
+    container_name: live-presence-feed
+    environment:
+      SERVER_PORT: 8086
+      SPRING_DATASOURCE_URL: jdbc:postgresql://postgres:5432/livepresence
+      SPRING_DATASOURCE_USERNAME: postgres
+      SPRING_DATASOURCE_PASSWORD: postgres
+      SPRING_DATA_REDIS_HOST: redis
+      SPRING_DATA_REDIS_PORT: 6379
+      SPRING_KAFKA_BOOTSTRAP_SERVERS: kafka:9092
+      APP_KAFKA_ENABLED: "true"
+      APP_JWT_SECRET: ${JWT_SECRET:-local_dev_secret_key_must_be_at_least_64_characters_long_for_jwt_signing}
+    ports:
+      - "8086:8086"
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      kafka:
+        condition: service_healthy
+    networks:
+      - live-presence-network
+    restart: unless-stopped
+
+  # API Gateway — single public entry point (routing, rate limiting, JWT, CORS)
+  gateway:
+    build:
+      context: ./services/gateway
+      dockerfile: Dockerfile.local
+    container_name: live-presence-gateway
+    environment:
+      SPRING_PROFILES_ACTIVE: local
+      SERVER_PORT: 8080
+      REDIS_HOST: redis
+      REDIS_PORT: 6379
+      REDIS_SSL_ENABLED: "false"
+      JWT_SECRET: ${JWT_SECRET:-local_dev_secret_key_must_be_at_least_64_characters_long_for_jwt_signing}
+      AUTH_SERVICE_URI: http://auth:8081
+      CORE_SERVICE_URI: http://core:8080
+      CORE_SERVICE_WS_URI: ws://core:8080
+      PRESENCE_SERVICE_URI: http://presence:8083
+      NOTIFICATION_SERVICE_URI: http://notification:8085
+      FEED_SERVICE_URI: http://feed:8086
+    ports:
+      - "8080:8080"
+    depends_on:
+      redis:
+        condition: service_healthy
+      auth:
+        condition: service_started
+      core:
+        condition: service_started
+      presence:
+        condition: service_started
+      notification:
+        condition: service_started
+      feed:
+        condition: service_started
+    networks:
+      - live-presence-network
+    restart: unless-stopped
+
+  # Frontend — talks only to the gateway
   frontend:
     build:
-      context: ./frontend
+      context: ./services/frontend
       dockerfile: Dockerfile.local
     container_name: live-presence-frontend
     environment:
@@ -170,7 +315,7 @@ services:
     ports:
       - "3000:3000"
     depends_on:
-      - backend
+      - gateway
     # Use built image content for frontend to avoid host-volume permission issues
     networks:
       - live-presence-network
