@@ -11,8 +11,10 @@ import {
   fetchNearby,
   setLive,
   fetchPostsFeed,
+  fetchVibes,
   getUserProfile,
 } from "../api";
+import { FALLBACK_VIBES, buildVibeIndex, vibeEmoji } from "../vibes";
 import MapView from "../components/MapView";
 import PostComposer from "../components/PostComposer";
 import PostFeed from "../components/PostFeed";
