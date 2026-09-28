@@ -1,0 +1,29 @@
+server:
+  port: ${SERVER_PORT:8083}
+
+spring:
+  application:
+    name: presence-service
+  data:
+    redis:
+      host: ${SPRING_DATA_REDIS_HOST:localhost}
+      port: ${SPRING_DATA_REDIS_PORT:6379}
+      password: ${SPRING_DATA_REDIS_PASSWORD:}
+
+app:
+  jwt:
+    # MUST match the secret used by the auth service (signer) and the gateway.
+    secret: ${APP_JWT_SECRET:dev_secret_key_minimum_32_characters_required_for_jwt_signing_and_verification}
+
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,info,metrics,prometheus
+  endpoint:
+    health:
+      show-details: always
+
+logging:
+  level:
+    org.springframework.security: INFO
