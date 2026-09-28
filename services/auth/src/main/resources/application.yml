@@ -1,0 +1,70 @@
+server:
+  port: ${SERVER_PORT:8081}
+
+spring:
+  application:
+    name: auth-service
+
+  # We define our own KafkaTemplate conditionally (see config/KafkaConfig) so that
+  # having spring-kafka on the classpath does not force a producer into existence.
+  autoconfigure:
+    exclude:
+      - org.springframework.boot.autoconfigure.kafka.KafkaAutoConfiguration
+
+  datasource:
+    # currentSchema keeps `public` on the search path so the shared citext type resolves.
+    url: ${SPRING_DATASOURCE_URL:jdbc:postgresql://localhost:5432/livepresence?currentSchema=auth,public}
+    username: ${SPRING_DATASOURCE_USERNAME:postgres}
+    password: ${SPRING_DATASOURCE_PASSWORD:postgres}
+    hikari:
+      maximum-pool-size: ${DB_POOL_MAX:10}
+      pool-name: auth-pool
+
+  jpa:
+    hibernate:
+      ddl-auto: none
+    open-in-view: false
+    properties:
+      hibernate:
+        format_sql: true
+        jdbc:
+          time_zone: UTC
+
+  flyway:
+    enabled: true
+    schemas: auth
+    default-schema: auth
+    create-schemas: true
+    baseline-on-migrate: true
+    locations: classpath:db/migration
+
+  kafka:
+    bootstrap-servers: ${SPRING_KAFKA_BOOTSTRAP_SERVERS:localhost:9092}
+
+app:
+  kafka:
+    enabled: ${APP_KAFKA_ENABLED:false}
+  cors:
+    allowed-origins: ${APP_CORS_ALLOWED_ORIGINS:http://localhost:3000,http://localhost:5173}
+  jwt:
+    # MUST match the secret used by the gateway and the core service — they verify
+    # what this service signs. Override in every non-local environment.
+    secret: ${APP_JWT_SECRET:dev_secret_key_minimum_32_characters_required_for_jwt_signing_and_verification}
+    accessMinutes: ${APP_JWT_ACCESS_MINUTES:15}
+    refreshDays: ${APP_JWT_REFRESH_DAYS:14}
+
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,info,metrics
+  endpoint:
+    health:
+      show-details: always
+      probes:
+        enabled: true
+
+logging:
+  level:
+    root: INFO
+    com.livepresence.auth: DEBUG
