@@ -117,6 +117,14 @@ export async function setLive(live) {
   if (!res.ok) throw new Error(await res.text());
 }
 
+// ========== Vibes API ==========
+
+export async function fetchVibes() {
+  const res = await request("/api/vibes");
+  if (!res.ok) throw new Error(await res.text());
+  return res.json();
+}
+
 // ========== Posts API ==========
 
 export async function createPost(data) {
