@@ -4,6 +4,7 @@ import com.example.presence.chat.cassandra.CassandraMessage;
 import com.example.presence.chat.cassandra.CassandraMessageRepository;
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.data.redis.core.RedisTemplate;
 import org.springframework.stereotype.Service;
 
@@ -26,7 +27,7 @@ public class MessageStorageService {
   private static final Duration CACHE_TTL = Duration.ofHours(24);
 
   public MessageStorageService(
-      CassandraMessageRepository cassandraRepo,
+      @Autowired(required = false) CassandraMessageRepository cassandraRepo,
       RedisTemplate<String, String> redisTemplate,
       ObjectMapper objectMapper
   ) {
@@ -47,14 +48,16 @@ public class MessageStorageService {
         conversationId, now, messageId, senderId, content, messageType, mediaUrl
     );
 
-    // Save to Cassandra asynchronously
-    new Thread(() -> {
-      try {
-        cassandraRepo.save(msg);
-      } catch (Exception e) {
-        System.err.println("Failed to save message to Cassandra: " + e.getMessage());
-      }
-    }).start();
+    // Save to Cassandra asynchronously (if available)
+    if (cassandraRepo != null) {
+      new Thread(() -> {
+        try {
+          cassandraRepo.save(msg);
+        } catch (Exception e) {
+          System.err.println("Failed to save message to Cassandra: " + e.getMessage());
+        }
+      }).start();
+    }
 
     // Update Redis cache immediately - WhatsApp style
     updateCacheWithNewMessage(conversationId, msg);
@@ -72,23 +75,30 @@ public class MessageStorageService {
     }
 
     // Cache miss - load from Cassandra
-    List<CassandraMessage> messages = cassandraRepo.findTopNByConversationId(conversationId, limit);
-    List<MessageDTO> dtos = messages.stream()
-        .map(this::toDTO)
-        .collect(Collectors.toList());
+    if (cassandraRepo != null) {
+      List<CassandraMessage> messages = cassandraRepo.findTopNByConversationId(conversationId, limit);
+      List<MessageDTO> dtos = messages.stream()
+          .map(this::toDTO)
+          .collect(Collectors.toList());
 
-    // Populate cache for next time
-    if (!dtos.isEmpty()) {
-      cacheMessages(conversationId, dtos);
+      // Populate cache for next time
+      if (!dtos.isEmpty()) {
+        cacheMessages(conversationId, dtos);
+      }
+
+      return dtos;
     }
 
-    return dtos;
+    return new ArrayList<>();
   }
 
   /**
    * Get older messages (pagination) - always from Cassandra
    */
   public List<MessageDTO> getMessagesBefore(UUID conversationId, Instant before, int limit) {
+    if (cassandraRepo == null) {
+      return new ArrayList<>();
+    }
     List<CassandraMessage> messages = cassandraRepo.findByConversationIdAndCreatedAtBefore(
         conversationId, before, limit
     );
