@@ -51,6 +51,18 @@ spring:
                 redis-rate-limiter.replenishRate: 100
                 redis-rate-limiter.burstCapacity: 200
 
+        # Vibe catalog (public reference data, served by the feed service). No
+        # AuthenticationFilter: the catalog is non-sensitive and cacheable.
+        - id: vibe-catalog
+          uri: ${FEED_SERVICE_URI:http://localhost:8086}
+          predicates:
+            - Path=/api/vibes/**
+          filters:
+            - name: RequestRateLimiter
+              args:
+                redis-rate-limiter.replenishRate: 100
+                redis-rate-limiter.burstCapacity: 200
+
         # Feed service (standalone). Its controllers expect the full
         # /api/posts/** path, so DO NOT rewrite.
         - id: feed-service
