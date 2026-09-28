@@ -197,8 +197,26 @@ JWT_SECRET=<from-secrets-manager>
 - `POST /api/presence/heartbeat` - Send GPS location
 - `GET /api/presence/nearby` - Find nearby users
 - `POST /api/conversations` - Create conversation
+- `GET /api/conversations` - List conversations (Messages dropdown)
+- `POST /api/conversations/{id}/read` - Mark conversation read (reset unread)
 - `GET /api/conversations/{id}/messages` - Get messages
+- `GET /api/notifications?limit=30` - List notifications + unread count
+- `POST /api/notifications/read` - Mark all notifications read
 - `WS /ws` - WebSocket connection
+
+### WebSocket (STOMP) Destinations
+
+Connect:
+- `GET /ws` (SockJS enabled)
+- STOMP `CONNECT` header required: `Authorization: Bearer <accessToken>`
+
+Subscribe:
+- `/user/queue/notifications` - Activity notifications (likes/comments/reactions/messages)
+- `/user/queue/messages` - Message notifications (for the Messages dropdown)
+- `/topic/chat/{conversationId}` - Real-time chat stream for a conversation
+
+Send:
+- `/app/chat.send/{conversationId}` - Send a message into a conversation
 
 ## Troubleshooting Quick Fixes
 
