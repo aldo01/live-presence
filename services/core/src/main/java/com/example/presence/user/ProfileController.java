@@ -1,31 +1,35 @@
 package com.example.presence.user;
 
-import com.example.presence.auth.JwtAuthFilter.JwtPrincipal;
-import com.example.presence.feed.PostEntity;
-import com.example.presence.feed.PostRepository;
-import com.example.presence.presence.PresenceService;
+import java.util.UUID;
+
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.data.domain.PageRequest;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.core.annotation.AuthenticationPrincipal;
-import org.springframework.web.bind.annotation.*;
+import org.springframework.web.bind.annotation.DeleteMapping;
+import org.springframework.web.bind.annotation.GetMapping;
+import org.springframework.web.bind.annotation.PathVariable;
+import org.springframework.web.bind.annotation.PostMapping;
+import org.springframework.web.bind.annotation.PutMapping;
+import org.springframework.web.bind.annotation.RequestBody;
+import org.springframework.web.bind.annotation.RequestMapping;
+import org.springframework.web.bind.annotation.RestController;
 
-import java.util.UUID;
+import com.example.presence.auth.JwtAuthFilter.JwtPrincipal;
+import com.example.presence.feed.PostRepository;
 
 @RestController
 @RequestMapping("/api")
 public class ProfileController {
 
   private final UserRepository userRepo;
-  private final PresenceService presenceService;
   private final PostRepository postRepo;
 
   @Autowired
   private UserFollowRepository userFollowRepo;
 
-  public ProfileController(UserRepository userRepo, PresenceService presenceService, PostRepository postRepo) {
+  public ProfileController(UserRepository userRepo, PostRepository postRepo) {
     this.userRepo = userRepo;
-    this.presenceService = presenceService;
     this.postRepo = postRepo;
   }
 
@@ -88,22 +92,8 @@ public class ProfileController {
     u.setLive(live);
     userRepo.save(u);
 
-    // Add to Redis when going live, remove when going offline
-    if (live) {
-      // Add user to Redis presence with current location
-      if (u.getLastLocationLat() != null && u.getLastLocationLon() != null) {
-        presenceService.markAliveWithLocation(
-          u.getId().toString(),
-          u.getDisplayName(),
-          u.getInterest(),
-          u.getLastLocationLat(),
-          u.getLastLocationLon()
-        );
-      }
-    } else {
-      presenceService.markOffline(u.getId().toString());
-    }
-
+    // Redis presence is owned exclusively by the presence-service. The client
+    // resumes/stops heartbeats based on this flag; TTL removes stale entries.
     return ResponseEntity.noContent().build();
   }
 
