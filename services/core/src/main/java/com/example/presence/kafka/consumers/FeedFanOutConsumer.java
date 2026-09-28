@@ -1,21 +1,21 @@
 package com.example.presence.kafka.consumers;
 
-import com.example.presence.kafka.events.FeedUpdateEvent;
-import com.example.presence.kafka.events.PostEvent;
-import com.example.presence.kafka.producers.EventPublisher;
-import com.example.presence.presence.PresenceService;
-import com.example.presence.user.UserFollowRepository;
+import java.util.List;
+import java.util.UUID;
+
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.data.redis.core.RedisTemplate;
 import org.springframework.kafka.annotation.KafkaListener;
 import org.springframework.messaging.simp.SimpMessagingTemplate;
 import org.springframework.stereotype.Service;
 
-import java.util.List;
-import java.util.UUID;
-import java.util.concurrent.TimeUnit;
+import com.example.presence.kafka.events.FeedUpdateEvent;
+import com.example.presence.kafka.events.PostEvent;
+import com.example.presence.kafka.producers.EventPublisher;
+import com.example.presence.user.UserFollowRepository;
 
 /**
  * Feed Fan-Out Consumer
@@ -28,6 +28,7 @@ import java.util.concurrent.TimeUnit;
  * 4. Invalidate relevant Redis caches
  */
 @Service
+@ConditionalOnProperty(name = "app.kafka.enabled", havingValue = "true")
 public class FeedFanOutConsumer {
     
     private static final Logger log = LoggerFactory.getLogger(FeedFanOutConsumer.class);
@@ -37,7 +38,7 @@ public class FeedFanOutConsumer {
     private UserFollowRepository followRepository;
 
     @Autowired
-    private PresenceService presenceService;
+    private NearbyUserLookup nearbyUserLookup;
 
     @Autowired
     private EventPublisher eventPublisher;
@@ -112,8 +113,8 @@ public class FeedFanOutConsumer {
      */
     private void fanOutToNearbyUsers(PostEvent event) {
         try {
-            // Get nearby users from Redis geospatial data
-            List<String> nearbyUserIds = presenceService.getNearbyUserIds(
+            // Get nearby users from Redis geospatial data (written by presence-service)
+            List<String> nearbyUserIds = nearbyUserLookup.getNearbyUserIds(
                 event.getLocationLat(), 
                 event.getLocationLon(), 
                 MAX_RADIUS_KM

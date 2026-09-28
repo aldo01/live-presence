@@ -9,6 +9,8 @@ import org.springframework.kafka.core.KafkaTemplate;
 import org.springframework.kafka.support.SendResult;
 import org.springframework.stereotype.Service;
 
+import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
+
 import java.util.concurrent.CompletableFuture;
 
 /**
@@ -16,6 +18,7 @@ import java.util.concurrent.CompletableFuture;
  * Publishes events to Kafka topics for async processing
  */
 @Service
+@ConditionalOnProperty(name = "app.kafka.enabled", havingValue = "true")
 public class EventPublisher {
     
     private static final Logger log = LoggerFactory.getLogger(EventPublisher.class);

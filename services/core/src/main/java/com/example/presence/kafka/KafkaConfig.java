@@ -15,6 +15,8 @@ import org.springframework.kafka.core.*;
 import org.springframework.kafka.support.serializer.JsonDeserializer;
 import org.springframework.kafka.support.serializer.JsonSerializer;
 
+import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
+
 import java.util.HashMap;
 import java.util.Map;
 
@@ -28,6 +30,7 @@ import java.util.Map;
  * - feed.update: Feed update notifications
  */
 @Configuration
+@ConditionalOnProperty(name = "app.kafka.enabled", havingValue = "true")
 @EnableKafka
 public class KafkaConfig {
 
