@@ -1,0 +1,11 @@
+FROM node:20-bullseye AS development
+WORKDIR /app
+COPY package*.json ./
+# Allow package install scripts to run as root and ensure vite binary is executable
+RUN npm ci --unsafe-perm && \
+	# ensure vite available and executable inside the image
+	npm install -g vite@5 --no-fund --no-audit || true && \
+	if [ -d node_modules/.bin ]; then chmod -R a+rx node_modules/.bin || true; fi
+COPY . .
+EXPOSE 3000
+CMD ["npm", "run", "dev", "--", "--host", "0.0.0.0", "--port", "3000"]
