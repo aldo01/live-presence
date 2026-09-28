@@ -5,8 +5,10 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.cloud.gateway.filter.GatewayFilter;
 import org.springframework.cloud.gateway.filter.factory.AbstractGatewayFilterFactory;
+import org.springframework.http.HttpHeaders;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.server.reactive.ServerHttpRequest;
+import org.springframework.http.server.reactive.ServerHttpRequestDecorator;
 import org.springframework.stereotype.Component;
 import org.springframework.web.server.ServerWebExchange;
 import reactor.core.publisher.Mono;
@@ -44,16 +46,26 @@ public class AuthenticationFilter extends AbstractGatewayFilterFactory<Authentic
           return onError(exchange, "Invalid or expired token", HttpStatus.UNAUTHORIZED);
         }
 
-        // Extract user info and add to headers for downstream services
+        // Extract user info and forward it to downstream services. The request
+        // headers can be read-only here (the Retry filter caches them), so we
+        // copy them into a writable set exposed via a request decorator instead
+        // of calling the builder's header() method, which would throw.
         String userId = jwtUtil.extractUserId(token);
         String email = jwtUtil.extractEmail(token);
         String name = jwtUtil.extractName(token);
 
-        ServerHttpRequest modifiedRequest = exchange.getRequest().mutate()
-            .header("X-User-Id", userId != null ? userId : "")
-            .header("X-User-Email", email != null ? email : "")
-            .header("X-User-Name", name != null ? name : "")
-            .build();
+        HttpHeaders writable = new HttpHeaders();
+        writable.putAll(request.getHeaders());
+        writable.set("X-User-Id", userId != null ? userId : "");
+        writable.set("X-User-Email", email != null ? email : "");
+        writable.set("X-User-Name", name != null ? name : "");
+
+        ServerHttpRequest modifiedRequest = new ServerHttpRequestDecorator(request) {
+          @Override
+          public HttpHeaders getHeaders() {
+            return writable;
+          }
+        };
 
         return chain.filter(exchange.mutate().request(modifiedRequest).build());
         
