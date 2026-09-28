@@ -1,20 +1,15 @@
-import React, { useState } from "react";
+import React, { useMemo, useState } from "react";
 import { createPost } from "../api";
+import { FALLBACK_VIBES } from "../vibes";
 
-const INTERESTS = ["General", "Sports", "Music", "Food", "Tech", "Art", "Travel", "Gaming"];
-
-export default function PostComposer({ auth, onPostCreated, userLocation }) {
+export default function PostComposer({ auth, onPostCreated, userLocation, vibes }) {
+  const catalog = useMemo(
+    () => (Array.isArray(vibes) && vibes.length > 0 ? vibes : FALLBACK_VIBES),
+    [vibes]
+  );
   const [content, setContent] = useState("");
-  const [selectedInterests, setSelectedInterests] = useState(["General"]);
+  const [selectedVibe, setSelectedVibe] = useState("General");
   const [posting, setPosting] = useState(false);
-
-  const toggleInterest = (interest) => {
-    setSelectedInterests((prev) =>
-      prev.includes(interest)
-        ? prev.filter((i) => i !== interest)
-        : [...prev, interest]
-    );
-  };
 
   const handlePost = async () => {
     if (!content.trim()) return;
@@ -23,13 +18,13 @@ export default function PostComposer({ auth, onPostCreated, userLocation }) {
     try {
       const post = await createPost({
         content: content.trim(),
-        interest: selectedInterests[0] || "General", // Use first selected interest
+        interest: selectedVibe || "General",
         lat: userLocation?.lat || 0,
         lon: userLocation?.lon || 0,
         imageUrl: null
       });
       setContent("");
-      setSelectedInterests(["General"]);
+      setSelectedVibe("General");
       if (onPostCreated) onPostCreated(post);
     } catch (err) {
       console.error("Failed to create post:", err);
@@ -85,28 +80,35 @@ export default function PostComposer({ auth, onPostCreated, userLocation }) {
 
       <div style={{ marginBottom: "16px" }}>
         <div style={{ fontSize: "13px", fontWeight: "600", color: "#6b7280", marginBottom: "8px" }}>
-          Interests
+          Pick a vibe
         </div>
         <div style={{ display: "flex", flexWrap: "wrap", gap: "8px" }}>
-          {INTERESTS.map((interest) => (
-            <button
-              key={interest}
-              onClick={() => toggleInterest(interest)}
-              style={{
-                padding: "6px 14px",
-                borderRadius: "20px",
-                border: "1px solid #e5e7eb",
-                background: selectedInterests.includes(interest) ? "#667eea" : "white",
-                color: selectedInterests.includes(interest) ? "white" : "#374151",
-                fontSize: "13px",
-                fontWeight: "500",
-                cursor: "pointer",
-                transition: "all 0.2s",
-              }}
-            >
-              {interest}
-            </button>
-          ))}
+          {catalog.map((vibe) => {
+            const active = selectedVibe === vibe.key;
+            return (
+              <button
+                key={vibe.key}
+                onClick={() => setSelectedVibe(vibe.key)}
+                style={{
+                  padding: "6px 14px",
+                  borderRadius: "20px",
+                  border: active ? "1px solid transparent" : "1px solid #e5e7eb",
+                  background: active ? vibe.color : "white",
+                  color: active ? "white" : "#374151",
+                  fontSize: "13px",
+                  fontWeight: "500",
+                  cursor: "pointer",
+                  transition: "all 0.2s",
+                  display: "flex",
+                  alignItems: "center",
+                  gap: "6px",
+                }}
+              >
+                <span>{vibe.emoji}</span>
+                {vibe.label}
+              </button>
+            );
+          })}
         </div>
       </div>
 
