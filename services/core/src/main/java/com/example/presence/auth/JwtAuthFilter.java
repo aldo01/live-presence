@@ -13,15 +13,16 @@ import org.springframework.stereotype.Component;
 import org.springframework.web.filter.OncePerRequestFilter;
 
 import java.io.IOException;
+import java.security.Principal;
 import java.util.List;
 
 @Component
 public class JwtAuthFilter extends OncePerRequestFilter {
 
-  private final JwtService jwtService;
+  private final AccessTokenVerifier tokenVerifier;
 
-  public JwtAuthFilter(JwtService jwtService) {
-    this.jwtService = jwtService;
+  public JwtAuthFilter(AccessTokenVerifier tokenVerifier) {
+    this.tokenVerifier = tokenVerifier;
   }
 
   @Override
@@ -36,8 +37,8 @@ public class JwtAuthFilter extends OncePerRequestFilter {
 
     String token = auth.substring("Bearer ".length()).trim();
     try {
-      Jws<Claims> jws = jwtService.parse(token);
-      if (!jwtService.isAccessToken(jws)) {
+      Jws<Claims> jws = tokenVerifier.parse(token);
+      if (!tokenVerifier.isAccessToken(jws)) {
         filterChain.doFilter(request, response);
         return;
       }
@@ -61,6 +62,12 @@ public class JwtAuthFilter extends OncePerRequestFilter {
     filterChain.doFilter(request, response);
   }
 
-  public record JwtPrincipal(String subject, String email, String name) {}
+  public record JwtPrincipal(String subject, String email, String name) implements Principal {
+    @Override
+    public String getName() {
+      // Critical for WebSocket user destinations (convertAndSendToUser): use userId as the principal name
+      return subject;
+    }
+  }
 }
 
