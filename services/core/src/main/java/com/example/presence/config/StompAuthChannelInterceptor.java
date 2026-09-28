@@ -3,7 +3,7 @@
 package com.example.presence.config;
 
 import com.example.presence.auth.JwtAuthFilter.JwtPrincipal;
-import com.example.presence.auth.JwtService;
+import com.example.presence.auth.AccessTokenVerifier;
 import io.jsonwebtoken.Claims;
 import io.jsonwebtoken.Jws;
 import org.springframework.messaging.*;
@@ -19,10 +19,10 @@ import java.util.List;
 @Component
 public class StompAuthChannelInterceptor implements ChannelInterceptor {
 
-  private final JwtService jwtService;
+  private final AccessTokenVerifier tokenVerifier;
 
-  public StompAuthChannelInterceptor(JwtService jwtService) {
-    this.jwtService = jwtService;
+  public StompAuthChannelInterceptor(AccessTokenVerifier tokenVerifier) {
+    this.tokenVerifier = tokenVerifier;
   }
 
   @Override
@@ -40,8 +40,8 @@ public class StompAuthChannelInterceptor implements ChannelInterceptor {
       String token = authHeader.substring("Bearer ".length()).trim();
 
       try {
-        Jws<Claims> jws = jwtService.parse(token);
-        if (!jwtService.isAccessToken(jws)) {
+        Jws<Claims> jws = tokenVerifier.parse(token);
+        if (!tokenVerifier.isAccessToken(jws)) {
           throw new MessagingException("Invalid token type (expected access token)");
         }
 

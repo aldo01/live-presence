@@ -13,8 +13,10 @@ import org.springframework.data.cassandra.core.convert.CassandraConverter;
 import org.springframework.data.cassandra.config.AbstractCassandraConfiguration;
 import org.springframework.data.cassandra.config.SchemaAction;
 import org.springframework.data.cassandra.repository.config.EnableCassandraRepositories;
+import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 
 @Configuration
+@ConditionalOnProperty(name = "app.cassandra.enabled", havingValue = "true")
 @EnableCassandraRepositories(basePackages = "com.example.presence.chat.cassandra")
 public class CassandraConfig extends AbstractCassandraConfiguration {
 
