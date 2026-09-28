@@ -28,7 +28,16 @@ spring:
       port: 9042
       session-name: default
 
+  kafka:
+    bootstrap-servers: ${SPRING_KAFKA_BOOTSTRAP_SERVERS:localhost:9092}
+    consumer:
+      group-id: ${SPRING_KAFKA_CONSUMER_GROUP_ID:live-presence-group}
+
 app:
+  cassandra:
+    enabled: ${APP_CASSANDRA_ENABLED:false}
+  kafka:
+    enabled: ${APP_KAFKA_ENABLED:false}
   jwt:
     secret: ${APP_JWT_SECRET:dev_secret_key_minimum_32_characters_required_for_jwt_signing_and_verification}
     accessMinutes: ${APP_JWT_ACCESS_MINUTES:15}

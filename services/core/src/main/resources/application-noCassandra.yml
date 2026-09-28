@@ -3,8 +3,16 @@ spring:
     exclude:
       - org.springframework.boot.autoconfigure.cassandra.CassandraAutoConfiguration
       - org.springframework.data.cassandra.repository.support.CassandraRepositoriesAutoConfiguration
+      - org.springframework.boot.autoconfigure.kafka.KafkaAutoConfiguration
+
+app:
+  cassandra:
+    enabled: false
+  kafka:
+    enabled: false
 
 logging:
   level:
     org.springframework.data.cassandra: OFF
     com.datastax: OFF
+    org.apache.kafka: OFF
