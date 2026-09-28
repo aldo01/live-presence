@@ -155,6 +155,9 @@ services:
       # Gateway pins Spring Cloud to a release train that predates this Boot
       # version; the strict compatibility check is not needed for local dev.
       SPRING_CLOUD_COMPATIBILITY_VERIFIER_ENABLED: "false"
+      # RequestRateLimiter's default key resolver returns an empty key for
+      # anonymous requests; with deny-empty-key=true that 403s login/register.
+      SPRING_CLOUD_GATEWAY_FILTER_REQUEST_RATE_LIMITER_DENY_EMPTY_KEY: "false"
       REDIS_HOST: redis
       REDIS_PORT: 6379
       REDIS_SSL_ENABLED: "false"
