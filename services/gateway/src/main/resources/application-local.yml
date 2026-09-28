@@ -7,47 +7,72 @@ spring:
   cloud:
     gateway:
       routes:
+        # Auth service (public). Controller base path is /api/auth, so DO NOT rewrite.
         - id: auth-service
-          uri: ${SPRING_CLOUD_GATEWAY_ROUTES_0_URI:http://localhost:8081}
+          uri: ${AUTH_SERVICE_URI:http://localhost:8081}
           predicates:
             - Path=/api/auth/**
           filters:
-            - RewritePath=/api/auth/(?<segment>.*), /$\{segment}
             - name: RequestRateLimiter
               args:
                 redis-rate-limiter.replenishRate: 20
                 redis-rate-limiter.burstCapacity: 40
-        
-        - id: user-service
-          uri: ${SPRING_CLOUD_GATEWAY_ROUTES_1_URI:http://localhost:8082}
+
+        # Core service WebSocket. STOMP auth is handled in-app via the CONNECT
+        # frame, so the gateway AuthenticationFilter is intentionally omitted here.
+        - id: core-ws
+          uri: ${CORE_SERVICE_WS_URI:ws://localhost:8090}
           predicates:
-            - Path=/api/me/**,/api/users/**
-          filters:
-            - RewritePath=/api/(?<segment>.*), /$\{segment}
-            - AuthenticationFilter
-            - name: RequestRateLimiter
-              args:
-                redis-rate-limiter.replenishRate: 100
-                redis-rate-limiter.burstCapacity: 200
-        
+            - Path=/ws/**
+
+        # Presence service (standalone, Redis-only). Its controllers expect the
+        # full /api/presence/** path, so DO NOT rewrite.
         - id: presence-service
-          uri: ${SPRING_CLOUD_GATEWAY_ROUTES_2_URI:http://localhost:8083}
+          uri: ${PRESENCE_SERVICE_URI:http://localhost:8083}
           predicates:
             - Path=/api/presence/**
           filters:
-            - RewritePath=/api/presence/(?<segment>.*), /$\{segment}
             - AuthenticationFilter
             - name: RequestRateLimiter
               args:
                 redis-rate-limiter.replenishRate: 100
                 redis-rate-limiter.burstCapacity: 200
-        
-        - id: chat-service
-          uri: ${SPRING_CLOUD_GATEWAY_ROUTES_3_URI:http://localhost:8084}
+
+        # Notification service (standalone). Its controllers expect the full
+        # /api/notifications/** path, so DO NOT rewrite.
+        - id: notification-service
+          uri: ${NOTIFICATION_SERVICE_URI:http://localhost:8085}
           predicates:
-            - Path=/api/chat/**,/ws/**
+            - Path=/api/notifications/**
           filters:
-            - RewritePath=/api/chat/(?<segment>.*), /$\{segment}
+            - AuthenticationFilter
+            - name: RequestRateLimiter
+              args:
+                redis-rate-limiter.replenishRate: 100
+                redis-rate-limiter.burstCapacity: 200
+
+        # Feed service (standalone). Its controllers expect the full
+        # /api/posts/** path, so DO NOT rewrite.
+        - id: feed-service
+          uri: ${FEED_SERVICE_URI:http://localhost:8086}
+          predicates:
+            - Path=/api/posts/**
+          filters:
+            - AuthenticationFilter
+            - name: RequestRateLimiter
+              args:
+                redis-rate-limiter.replenishRate: 100
+                redis-rate-limiter.burstCapacity: 200
+
+        # Core service (user, chat). Core controllers
+        # expect the full /api/** path, so DO NOT rewrite. Currently these domains
+        # all live in the core deployable; when they are split out, only the target
+        # URIs below change.
+        - id: core-service
+          uri: ${CORE_SERVICE_URI:http://localhost:8090}
+          predicates:
+            - Path=/api/me/**,/api/users/**,/api/conversations/**
+          filters:
             - AuthenticationFilter
             - name: RequestRateLimiter
               args:
