@@ -66,6 +66,10 @@ services:
       SPRING_DATA_REDIS_PORT: 6379
       APP_CASSANDRA_ENABLED: "false"
       APP_KAFKA_ENABLED: "false"
+      # noCassandra mode: Spring Boot still auto-configures Cassandra repositories
+      # from the classpath, which fails without a cassandraTemplate. Exclude those
+      # auto-configurations so the chat store falls back to Postgres/Redis.
+      SPRING_AUTOCONFIGURE_EXCLUDE: "org.springframework.boot.autoconfigure.cassandra.CassandraAutoConfiguration,org.springframework.boot.autoconfigure.data.cassandra.CassandraDataAutoConfiguration,org.springframework.boot.autoconfigure.data.cassandra.CassandraReactiveDataAutoConfiguration,org.springframework.boot.autoconfigure.data.cassandra.CassandraRepositoriesAutoConfiguration,org.springframework.boot.autoconfigure.data.cassandra.CassandraReactiveRepositoriesAutoConfiguration"
       APP_JWT_SECRET: ${JWT_SECRET:-local_dev_secret_key_must_be_at_least_64_characters_long_for_jwt_signing}
       APP_JWT_ACCESS_MINUTES: "15"
       APP_JWT_REFRESH_DAYS: "14"
