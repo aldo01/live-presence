@@ -1,0 +1,11 @@
+{
+  "identities": [
+    {
+      "name": "media-service",
+      "credentials": [
+        { "accessKey": "lp-media-access", "secretKey": "lp-media-secret-change-me" }
+      ],
+      "actions": ["Admin", "Read", "Write", "List", "Tagging"]
+    }
+  ]
+}

@@ -1,0 +1,39 @@
+server:
+  port: ${SERVER_PORT:8087}
+
+spring:
+  application:
+    name: media-service
+  servlet:
+    multipart:
+      enabled: false   # uploads go direct-to-store via presigned URLs, not through us
+
+app:
+  jwt:
+    # MUST match the secret used by the auth service (signer) and the gateway.
+    secret: ${APP_JWT_SECRET:dev_secret_key_minimum_32_characters_required_for_jwt_signing_and_verification}
+  media:
+    bucket: ${MEDIA_S3_BUCKET:media}
+    # Endpoint the SERVICE uses to talk to MinIO/S3 (inside the Docker network).
+    endpoint: ${MEDIA_S3_ENDPOINT:http://localhost:8333}
+    # Endpoint baked into presigned URLs that the BROWSER must be able to reach.
+    public-endpoint: ${MEDIA_S3_PUBLIC_ENDPOINT:http://localhost:8333}
+    region: ${MEDIA_S3_REGION:us-east-1}
+    access-key: ${MEDIA_S3_ACCESS_KEY:minioadmin}
+    secret-key: ${MEDIA_S3_SECRET_KEY:minioadmin123}
+    max-upload-bytes: ${MEDIA_MAX_UPLOAD_BYTES:10485760}   # 10 MB
+    upload-url-ttl-seconds: ${MEDIA_UPLOAD_TTL:600}        # 10 min
+    download-url-ttl-seconds: ${MEDIA_DOWNLOAD_TTL:3600}   # 1 hour
+
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,info,metrics,prometheus
+  endpoint:
+    health:
+      show-details: always
+
+logging:
+  level:
+    org.springframework.security: INFO
