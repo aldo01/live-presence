@@ -151,7 +151,9 @@ public class ChatController {
   @GetMapping("/conversations/{id}/messages")
   public List<MessageStorageService.MessageDTO> getMessages(
       @AuthenticationPrincipal JwtPrincipal p,
-      @PathVariable String id
+      @PathVariable String id,
+      @RequestParam(required = false) String before,
+      @RequestParam(defaultValue = "50") int limit
   ) {
     UUID conversationId = UUID.fromString(id);
     var c = convRepo.findById(conversationId).orElseThrow();
@@ -161,7 +163,13 @@ public class ChatController {
       throw new RuntimeException("not allowed");
     }
 
-    // Load from Cassandra with Redis caching
-    return messageStorage.getRecentMessages(conversationId, 50);
+    int pageSize = Math.min(Math.max(limit, 1), 100);
+
+    // Cursor pagination for infinite scroll: `before` is an ISO timestamp of the
+    // oldest message currently shown; omit it to load the most recent page.
+    if (before != null && !before.isBlank()) {
+      return messageStorage.getMessagesBefore(conversationId, java.time.Instant.parse(before), pageSize);
+    }
+    return messageStorage.getRecentMessages(conversationId, pageSize);
   }
 }

@@ -37,8 +37,10 @@ public class MessageStorageService {
   }
 
   /**
-   * Save message to Cassandra and update Redis cache
-   * WhatsApp-style: Write to Cassandra async, cache immediately
+   * Persist a message durably to Cassandra/ScyllaDB (the authoritative store)
+   * and update the Redis hot-tail cache. The Cassandra write is synchronous so
+   * the message is durable before it is broadcast — history then survives
+   * restarts and cache eviction, WhatsApp-style.
    */
   public void saveMessage(UUID conversationId, UUID messageId, UUID senderId, 
                           String content, String messageType, String mediaUrl) {
@@ -48,18 +50,12 @@ public class MessageStorageService {
         conversationId, now, messageId, senderId, content, messageType, mediaUrl
     );
 
-    // Save to Cassandra asynchronously (if available)
+    // Authoritative durable write (fast single-partition insert).
     if (cassandraRepo != null) {
-      new Thread(() -> {
-        try {
-          cassandraRepo.save(msg);
-        } catch (Exception e) {
-          System.err.println("Failed to save message to Cassandra: " + e.getMessage());
-        }
-      }).start();
+      cassandraRepo.save(msg);
     }
 
-    // Update Redis cache immediately - WhatsApp style
+    // Update Redis cache immediately - serves the chat open instantly.
     updateCacheWithNewMessage(conversationId, msg);
   }
 

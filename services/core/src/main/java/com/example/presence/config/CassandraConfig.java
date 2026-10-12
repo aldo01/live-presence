@@ -1,35 +1,41 @@
 package com.example.presence.config;
 
-import org.springframework.beans.factory.annotation.Value;
-import org.springframework.context.annotation.Configuration;
-import org.springframework.context.annotation.Bean;
-import org.springframework.context.annotation.Primary;
-import java.net.InetSocketAddress;
-import java.util.ArrayList;
 import java.util.List;
-import com.datastax.oss.driver.api.core.CqlSession;
-import org.springframework.data.cassandra.core.CassandraTemplate;
-import org.springframework.data.cassandra.core.convert.CassandraConverter;
+
+import org.springframework.beans.factory.annotation.Value;
+import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
+import org.springframework.context.annotation.Configuration;
 import org.springframework.data.cassandra.config.AbstractCassandraConfiguration;
 import org.springframework.data.cassandra.config.SchemaAction;
+import org.springframework.data.cassandra.core.cql.keyspace.CreateKeyspaceSpecification;
+import org.springframework.data.cassandra.core.cql.keyspace.DataCenterReplication;
 import org.springframework.data.cassandra.repository.config.EnableCassandraRepositories;
-import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 
+/**
+ * Cassandra/ScyllaDB configuration for the durable chat message store.
+ *
+ * Only active when {@code app.cassandra.enabled=true}. We rely on Spring Data's
+ * session factory (not a hand-rolled CqlSession) so that:
+ *   1. the keyspace is auto-created via {@link #getKeyspaceCreations()} before
+ *      the session binds to it (a hand-rolled session with .withKeyspace() fails
+ *      if the keyspace does not yet exist on a fresh cluster), and
+ *   2. the message table is auto-created from the entity via CREATE_IF_NOT_EXISTS.
+ */
 @Configuration
 @ConditionalOnProperty(name = "app.cassandra.enabled", havingValue = "true")
 @EnableCassandraRepositories(basePackages = "com.example.presence.chat.cassandra")
 public class CassandraConfig extends AbstractCassandraConfiguration {
 
-  @Value("${spring.data.cassandra.keyspace-name}")
+  @Value("${spring.data.cassandra.keyspace-name:livepresence_chat}")
   private String keyspaceName;
 
-  @Value("${spring.data.cassandra.contact-points}")
+  @Value("${spring.data.cassandra.contact-points:localhost}")
   private String contactPoints;
 
   @Value("${spring.data.cassandra.port:9042}")
   private int port;
 
-  @Value("${spring.data.cassandra.local-datacenter}")
+  @Value("${spring.data.cassandra.local-datacenter:datacenter1}")
   private String localDatacenter;
 
   @Override
@@ -62,37 +68,14 @@ public class CassandraConfig extends AbstractCassandraConfiguration {
     return new String[]{"com.example.presence.chat.cassandra"};
   }
 
-  @Bean
-  @Primary
-  public CqlSession cqlSession() {
-    // contactPoints may be a comma separated list like host:port
-    String[] cps = contactPoints.split(",");
-    List<InetSocketAddress> addrs = new ArrayList<>();
-    for (String cp : cps) {
-      String trimmed = cp.trim();
-      if (trimmed.isEmpty()) continue;
-      String host = trimmed;
-      int p = port;
-      if (trimmed.contains(":")) {
-        String[] parts = trimmed.split(":");
-        host = parts[0];
-        try { p = Integer.parseInt(parts[1]); } catch (NumberFormatException ignored) {}
-      }
-      addrs.add(new InetSocketAddress(host, p));
-    }
-
-    var builder = CqlSession.builder()
-      .withLocalDatacenter(localDatacenter)
-      .withKeyspace(keyspaceName);
-    for (InetSocketAddress a : addrs) {
-      builder.addContactPoint(a);
-    }
-
-    return builder.build();
-  }
-
-  @Bean
-  public CassandraTemplate cassandraTemplate(CqlSession session, CassandraConverter converter) {
-    return new CassandraTemplate(session, converter);
+  @Override
+  protected List<CreateKeyspaceSpecification> getKeyspaceCreations() {
+    // ScyllaDB uses tablets by default, which require NetworkTopologyStrategy
+    // (SimpleStrategy is rejected). RF 1 on the single dev datacenter; use a
+    // higher RF across datacenters in production.
+    return List.of(
+        CreateKeyspaceSpecification.createKeyspace(keyspaceName)
+            .ifNotExists()
+            .withNetworkReplication(DataCenterReplication.of(localDatacenter, 1)));
   }
 }

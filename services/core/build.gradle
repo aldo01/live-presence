@@ -15,6 +15,9 @@ dependencies {
   implementation 'org.springframework.boot:spring-boot-starter-web'
   implementation 'org.springframework.boot:spring-boot-starter-security'
   implementation 'org.springframework.boot:spring-boot-starter-websocket'
+  // TCP client used by Spring's STOMP broker relay to reach the external broker
+  // (RabbitMQ) for multi-node WebSocket fan-out.
+  implementation 'io.projectreactor.netty:reactor-netty'
   implementation 'org.springframework.boot:spring-boot-starter-data-redis'
   implementation 'org.springframework.boot:spring-boot-starter-data-jpa'
   implementation 'org.springframework.boot:spring-boot-starter-data-cassandra'
