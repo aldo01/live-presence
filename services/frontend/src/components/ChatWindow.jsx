@@ -1,5 +1,13 @@
 import React, { useEffect, useMemo, useRef, useState } from "react";
 import EmojiPicker from "./EmojiPicker";
+import { getMediaDownloadUrl } from "../api";
+
+// A legacy base64/data URL or a plain http(s) URL can be used directly; anything
+// else is treated as an object-storage key that must be resolved to a presigned
+// URL before it can be shown/downloaded.
+function isDirectUrl(s) {
+  return typeof s === "string" && (s.startsWith("http") || s.startsWith("data:") || s.startsWith("blob:"));
+}
 
 export default function ChatWindow({
   isOpen,
@@ -15,6 +23,30 @@ export default function ChatWindow({
   const messagesEndRef = useRef(null);
   const fileInputRef = useRef(null);
   const [showEmojiPicker, setShowEmojiPicker] = useState(false);
+  const [mediaUrls, setMediaUrls] = useState({}); // object key -> presigned URL
+
+  // Resolve object-storage keys on media messages into short-lived presigned URLs.
+  useEffect(() => {
+    const keys = (messages || [])
+      .filter((m) => (m.messageType === "image" || m.messageType === "document") && m.mediaUrl && !isDirectUrl(m.mediaUrl))
+      .map((m) => m.mediaUrl);
+    const missing = [...new Set(keys)].filter((k) => !mediaUrls[k]);
+    if (missing.length === 0) return;
+    let alive = true;
+    missing.forEach(async (key) => {
+      try {
+        const { downloadUrl } = await getMediaDownloadUrl(key);
+        if (alive) setMediaUrls((prev) => ({ ...prev, [key]: downloadUrl }));
+      } catch (e) {
+        /* leave unresolved; a placeholder shows */
+      }
+    });
+    return () => {
+      alive = false;
+    };
+  }, [messages, mediaUrls]);
+
+  const resolveSrc = (m) => (isDirectUrl(m.mediaUrl) ? m.mediaUrl : mediaUrls[m.mediaUrl]);
 
   const displayMessages = useMemo(() => {
     const toMs = (v) => {
@@ -42,9 +74,8 @@ export default function ChatWindow({
 
   const handleImageSelect = (e) => {
     const file = e.target.files[0];
-    if (file && file.type.startsWith("image/")) {
-      onSendImage(file);
-      // Reset file input so same file can be selected again
+    if (file) {
+      onSendImage(file); // handles both images and documents (up to 10 MB)
       if (fileInputRef.current) {
         fileInputRef.current.value = "";
       }
@@ -175,16 +206,18 @@ export default function ChatWindow({
                         : "#f3f4f6",
                     }}
                   >
-                    <img
-                      src={m.mediaUrl || m.content}
-                      alt="Sent image"
-                      style={{
-                        maxWidth: "100%",
-                        display: "block",
-                        cursor: "pointer",
-                      }}
-                      onClick={() => window.open(m.mediaUrl || m.content, "_blank")}
-                    />
+                    {resolveSrc(m) ? (
+                      <img
+                        src={resolveSrc(m)}
+                        alt="Sent image"
+                        style={{ maxWidth: "100%", display: "block", cursor: "pointer" }}
+                        onClick={() => window.open(resolveSrc(m), "_blank")}
+                      />
+                    ) : (
+                      <div style={{ padding: "28px 24px", color: isMe ? "white" : "#6b7280", fontSize: "13px" }}>
+                        🖼️ Loading image…
+                      </div>
+                    )}
                     {m.content && (
                       <div
                         style={{
@@ -197,6 +230,37 @@ export default function ChatWindow({
                       </div>
                     )}
                   </div>
+                ) : m.messageType === "document" ? (
+                  <a
+                    href={resolveSrc(m) || undefined}
+                    target="_blank"
+                    rel="noreferrer"
+                    download={m.content || true}
+                    style={{
+                      maxWidth: "70%",
+                      display: "flex",
+                      alignItems: "center",
+                      gap: "10px",
+                      padding: "12px 14px",
+                      borderRadius: isMe ? "16px 16px 4px 16px" : "16px 16px 16px 4px",
+                      background: isMe
+                        ? "linear-gradient(135deg, #667eea 0%, #764ba2 100%)"
+                        : "#f3f4f6",
+                      color: isMe ? "white" : "#1f2937",
+                      textDecoration: "none",
+                      cursor: resolveSrc(m) ? "pointer" : "default",
+                    }}
+                  >
+                    <span style={{ fontSize: "24px" }}>📄</span>
+                    <div style={{ overflow: "hidden" }}>
+                      <div style={{ fontWeight: 600, fontSize: "14px", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
+                        {m.content || "Document"}
+                      </div>
+                      <div style={{ fontSize: "12px", opacity: 0.85 }}>
+                        {resolveSrc(m) ? "Tap to open / download" : "Preparing…"}
+                      </div>
+                    </div>
+                  </a>
                 ) : (
                   <div
                     style={{
@@ -271,7 +335,14 @@ export default function ChatWindow({
             😊
           </button>
 
-          {/* Image Upload Button */}
+          <input
+            ref={fileInputRef}
+            type="file"
+            onChange={handleImageSelect}
+            style={{ display: "none" }}
+          />
+
+          {/* Document/attachment button */}
           <button
             onClick={() => fileInputRef.current?.click()}
             style={{
@@ -281,21 +352,13 @@ export default function ChatWindow({
               fontSize: "20px",
               cursor: "pointer",
               borderRadius: "50%",
-              transition: "background 0.2s",
             }}
             onMouseEnter={(e) => (e.target.style.background = "#f3f4f6")}
             onMouseLeave={(e) => (e.target.style.background = "transparent")}
-            title="Send photo"
+            title="Attach file (image or document, up to 10 MB)"
           >
-            📷
+            📎
           </button>
-          <input
-            ref={fileInputRef}
-            type="file"
-            accept="image/*"
-            onChange={handleImageSelect}
-            style={{ display: "none" }}
-          />
 
           <input
             type="text"
