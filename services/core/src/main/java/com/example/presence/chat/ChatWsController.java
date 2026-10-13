@@ -3,6 +3,7 @@ package com.example.presence.chat;
 import com.example.presence.auth.JwtAuthFilter.JwtPrincipal;
 import com.example.presence.notifications.NotificationService;
 import com.example.presence.user.UserRepository;
+import org.springframework.data.redis.core.StringRedisTemplate;
 import org.springframework.messaging.handler.annotation.*;
 import org.springframework.messaging.simp.SimpMessagingTemplate;
 import org.springframework.security.core.Authentication;
@@ -20,24 +21,28 @@ public class ChatWsController {
   private final SimpMessagingTemplate messaging;
   private final NotificationService notificationService;
   private final UserRepository userRepo;
+  private final StringRedisTemplate redis;
 
   public ChatWsController(
       ConversationRepository convRepo, 
       MessageStorageService messageStorage,
       SimpMessagingTemplate messaging,
       NotificationService notificationService,
-      UserRepository userRepo
+      UserRepository userRepo,
+      StringRedisTemplate redis
   ) {
     this.convRepo = convRepo;
     this.messageStorage = messageStorage;
     this.messaging = messaging;
     this.notificationService = notificationService;
     this.userRepo = userRepo;
+    this.redis = redis;
   }
 
-  public record SendMessage(String body, String messageType, String mediaUrl) {}
+  public record SendMessage(String body, String messageType, String mediaUrl, String clientMsgId) {}
   public record MessageEvent(
       String messageId,
+      String clientMsgId,
       String conversationId, 
       String senderId, 
       String body, 
@@ -58,7 +63,18 @@ public class ChatWsController {
     if (!(c.getUser1Id().equals(userId) || c.getUser2Id().equals(userId))) {
       return; // ignore unauthorized
     }
-    
+
+    // Idempotency: a client-generated id dedupes retries/reconnects so a message
+    // isn't stored or delivered twice (at-least-once client → exactly-once effect).
+    String clientMsgId = msg.clientMsgId();
+    if (clientMsgId != null && !clientMsgId.isBlank()) {
+      Boolean firstTime = redis.opsForValue()
+          .setIfAbsent("chat:dedupe:" + clientMsgId, "1", Duration.ofMinutes(10));
+      if (Boolean.FALSE.equals(firstTime)) {
+        return; // already processed this client message
+      }
+    }
+
     String messageType = msg.messageType() != null ? msg.messageType() : "text";
     String body = msg.body() != null ? msg.body().trim() : "";
     String mediaUrl = msg.mediaUrl();
@@ -101,6 +117,7 @@ public class ChatWsController {
     // Broadcast to conversation topic (instant delivery)
     MessageEvent event = new MessageEvent(
         messageId.toString(),
+        clientMsgId,
         conversationId, 
         userId.toString(), 
         body,
@@ -108,7 +125,7 @@ public class ChatWsController {
         mediaUrl,
         timestamp
     );
-    messaging.convertAndSend("/topic/chat/" + conversationId, event);
+    messaging.convertAndSend("/topic/chat." + conversationId, event);
     
     // Send personal notification to recipient (Facebook-style)
     messaging.convertAndSendToUser(
