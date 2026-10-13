@@ -51,25 +51,72 @@ services:
     networks: [live-presence-network]
     restart: unless-stopped
 
-  # Core Service (user, presence, chat, feed, notifications) — Cassandra/Kafka disabled
+  # ScyllaDB — Cassandra-compatible, high-throughput store for durable chat
+  # history (partitioned by conversation, clustered by time). Dev-mode single
+  # node here; scales horizontally to many nodes in production.
+  scylladb:
+    image: scylladb/scylla:latest
+    command: --developer-mode 1 --smp 1 --memory 1G --overprovisioned 1
+    volumes:
+      - scylla_data:/var/lib/scylla
+    ports: ["9042:9042"]
+    healthcheck:
+      test: ["CMD-SHELL", "cqlsh -e 'describe cluster' >/dev/null 2>&1 || exit 1"]
+      interval: 15s
+      timeout: 10s
+      retries: 12
+      start_period: 60s
+    networks: [live-presence-network]
+    restart: unless-stopped
+
+  # RabbitMQ with the STOMP plugin — the external broker relay that lets multiple
+  # core instances share one message bus, so WebSocket fan-out works across nodes
+  # (a message sent on node A reaches a subscriber connected to node B).
+  rabbitmq:
+    image: rabbitmq:3.13-management
+    hostname: rabbitmq
+    environment:
+      RABBITMQ_DEFAULT_USER: ${RABBITMQ_USER:-lp}
+      RABBITMQ_DEFAULT_PASS: ${RABBITMQ_PASS:-lppass}
+    volumes:
+      - ./infrastructure/rabbitmq/enabled_plugins:/etc/rabbitmq/enabled_plugins:ro
+      - rabbitmq_data:/var/lib/rabbitmq
+    ports: ["5672:5672", "15672:15672", "61613:61613"]
+    healthcheck:
+      test: ["CMD", "rabbitmq-diagnostics", "-q", "check_running"]
+      interval: 15s
+      timeout: 10s
+      retries: 10
+      start_period: 40s
+    networks: [live-presence-network]
+    restart: unless-stopped
+
+  # Core Service (user, presence, chat, feed, notifications)
   core:
     build:
       context: ./services/core
       dockerfile: Dockerfile.local
     environment:
-      SPRING_PROFILES_ACTIVE: local,noCassandra
+      SPRING_PROFILES_ACTIVE: local
       SERVER_PORT: 8080
       SPRING_DATASOURCE_URL: jdbc:postgresql://postgres:5432/livepresence
       SPRING_DATASOURCE_USERNAME: postgres
       SPRING_DATASOURCE_PASSWORD: postgres
       SPRING_DATA_REDIS_HOST: redis
       SPRING_DATA_REDIS_PORT: 6379
-      APP_CASSANDRA_ENABLED: "false"
+      # Durable chat history on ScyllaDB (Cassandra-compatible).
+      APP_CASSANDRA_ENABLED: "true"
+      SPRING_DATA_CASSANDRA_CONTACT_POINTS: scylladb
+      SPRING_DATA_CASSANDRA_PORT: "9042"
+      SPRING_DATA_CASSANDRA_KEYSPACE_NAME: livepresence_chat
+      SPRING_DATA_CASSANDRA_LOCAL_DATACENTER: datacenter1
+      # External STOMP broker relay (RabbitMQ) for multi-node WebSocket fan-out.
+      APP_STOMP_RELAY_ENABLED: "true"
+      APP_STOMP_RELAY_HOST: rabbitmq
+      APP_STOMP_RELAY_PORT: "61613"
+      APP_STOMP_RELAY_LOGIN: ${RABBITMQ_USER:-lp}
+      APP_STOMP_RELAY_PASSCODE: ${RABBITMQ_PASS:-lppass}
       APP_KAFKA_ENABLED: "false"
-      # noCassandra mode: Spring Boot still auto-configures Cassandra repositories
-      # from the classpath, which fails without a cassandraTemplate. Exclude those
-      # auto-configurations so the chat store falls back to Postgres/Redis.
-      SPRING_AUTOCONFIGURE_EXCLUDE: "org.springframework.boot.autoconfigure.cassandra.CassandraAutoConfiguration,org.springframework.boot.autoconfigure.data.cassandra.CassandraDataAutoConfiguration,org.springframework.boot.autoconfigure.data.cassandra.CassandraReactiveDataAutoConfiguration,org.springframework.boot.autoconfigure.data.cassandra.CassandraRepositoriesAutoConfiguration,org.springframework.boot.autoconfigure.data.cassandra.CassandraReactiveRepositoriesAutoConfiguration"
       APP_JWT_SECRET: ${JWT_SECRET:-local_dev_secret_key_must_be_at_least_64_characters_long_for_jwt_signing}
       APP_JWT_ACCESS_MINUTES: "15"
       APP_JWT_REFRESH_DAYS: "14"
@@ -78,6 +125,10 @@ services:
       postgres:
         condition: service_healthy
       redis:
+        condition: service_healthy
+      scylladb:
+        condition: service_healthy
+      rabbitmq:
         condition: service_healthy
     networks: [live-presence-network]
     restart: unless-stopped
@@ -144,6 +195,50 @@ services:
     networks: [live-presence-network]
     restart: unless-stopped
 
+  # SeaweedFS — distributed, S3-compatible object storage built for billions of
+  # files (the hyperscale blob store). Runs all-in-one here (master+volume+filer
+  # +S3 gateway). SSE-S3 (AES-256 server-side encryption at rest, per-object DEKs
+  # wrapped by a KEK) is enabled via the KEK passphrase below and applied as the
+  # bucket's default policy by the media service; TLS covers transit in prod.
+  seaweedfs:
+    image: chrislusf/seaweedfs:latest
+    command: >
+      server -dir=/data -ip=seaweedfs
+      -s3 -s3.port=8333 -s3.config=/etc/seaweedfs/s3.json
+      -master.volumeSizeLimitMB=1024
+    environment:
+      # Enables SSE-S3: a 256-bit key is derived from this secret via HKDF-SHA256
+      # and used to encrypt every object at rest (per-object DEK wrapped by it).
+      WEED_S3_SSE_KEY: ${SEAWEED_SSE_KEY:-lp-sse-master-secret-change-me-in-prod-please}
+      WEED_S3_SSE_KEK_PASSPHRASE: ${SEAWEED_SSE_PASSPHRASE:-lp-sse-kek-passphrase-change-me-in-prod}
+    volumes:
+      - seaweed_data:/data
+      - ./infrastructure/seaweedfs/s3.json:/etc/seaweedfs/s3.json:ro
+    ports: ["8333:8333", "9333:9333", "8888:8888"]
+    networks: [live-presence-network]
+    restart: unless-stopped
+
+  # Media Service — issues presigned upload/download URLs and runs the image
+  # optimization worker (resize + thumbnails). Bytes never pass through it.
+  media:
+    build:
+      context: ./services/media
+      dockerfile: Dockerfile.local
+    environment:
+      SERVER_PORT: 8087
+      APP_JWT_SECRET: ${JWT_SECRET:-local_dev_secret_key_must_be_at_least_64_characters_long_for_jwt_signing}
+      MEDIA_S3_ENDPOINT: http://seaweedfs:8333
+      MEDIA_S3_PUBLIC_ENDPOINT: ${MEDIA_S3_PUBLIC_ENDPOINT:-http://localhost:8333}
+      MEDIA_S3_ACCESS_KEY: lp-media-access
+      MEDIA_S3_SECRET_KEY: lp-media-secret-change-me
+      MEDIA_S3_BUCKET: media
+    ports: ["8087:8087"]
+    depends_on:
+      seaweedfs:
+        condition: service_started
+    networks: [live-presence-network]
+    restart: unless-stopped
+
   # API Gateway — single public entry point
   gateway:
     build:
@@ -164,10 +259,15 @@ services:
       JWT_SECRET: ${JWT_SECRET:-local_dev_secret_key_must_be_at_least_64_characters_long_for_jwt_signing}
       AUTH_SERVICE_URI: http://auth:8081
       CORE_SERVICE_URI: http://core:8080
-      CORE_SERVICE_WS_URI: ws://core:8080
+      # SockJS first does a plain-HTTP GET /ws/info before upgrading. Spring
+      # Cloud Gateway proxies that as normal HTTP and auto-switches to ws:// only
+      # when it sees the Upgrade header — so the route must use http://, not ws://
+      # (a ws:// scheme makes the gateway 400 the non-upgrade /ws/info request).
+      CORE_SERVICE_WS_URI: http://core:8080
       PRESENCE_SERVICE_URI: http://presence:8083
       NOTIFICATION_SERVICE_URI: http://notification:8085
       FEED_SERVICE_URI: http://feed:8086
+      MEDIA_SERVICE_URI: http://media:8087
     ports: ["8080:8080"]
     depends_on:
       redis:
@@ -182,6 +282,8 @@ services:
         condition: service_started
       feed:
         condition: service_started
+      media:
+        condition: service_started
     networks: [live-presence-network]
     restart: unless-stopped
 
@@ -192,6 +294,9 @@ services:
       dockerfile: Dockerfile.local
     environment:
       VITE_API_BASE_URL: http://localhost:8080
+      # Optional: set MAPTILER_KEY in your shell/.env for premium MapTiler vector
+      # styles. If unset, the map falls back to the free, no-key OpenFreeMap style.
+      VITE_MAPTILER_KEY: ${MAPTILER_KEY:-}
     ports: ["3000:3000"]
     depends_on: [gateway]
     networks: [live-presence-network]
@@ -199,6 +304,9 @@ services:
 
 volumes:
   pgdata:
+  seaweed_data:
+  scylla_data:
+  rabbitmq_data:
 
 networks:
   live-presence-network:
