@@ -17,6 +17,7 @@ import {
   fetchPostsFeed,
   fetchVibes,
   getUserProfile,
+  uploadMedia,
 } from "../api";
 import { FALLBACK_VIBES, buildVibeIndex, vibeEmoji } from "../vibes";
 import MapView from "../components/MapView";
@@ -120,6 +121,14 @@ export default function Live({ auth }) {
       .catch(() => {});
   }, []);
 
+  // On login, seed the Messages + Notifications badges with the persisted unread
+  // counts (messages/notifications received while the user was away), like Facebook.
+  useEffect(() => {
+    refreshConversationList();
+    refreshNotifications();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
   // WebSocket for chat and real-time feed updates
   useEffect(() => {
     // Set up the onConnect handler BEFORE activating
@@ -127,8 +136,9 @@ export default function Live({ auth }) {
       console.log('✅ WebSocket connected successfully');
       setWsConnected(true);
       
-      // Subscribe to feed updates
-      stomp.subscribe('/topic/feed/new-post', (message) => {
+      // Subscribe to feed updates (dot-separated: RabbitMQ STOMP rejects slashes
+      // in topic names, which would otherwise tear down the whole connection).
+      stomp.subscribe('/topic/feed.new-post', (message) => {
         try {
           const postEvent = JSON.parse(message.body);
           console.log('New post event received:', postEvent);
@@ -305,7 +315,7 @@ export default function Live({ auth }) {
   useEffect(() => {
     if (!conversationId || !stomp.connected) return;
 
-    const sub = stomp.subscribe(`/topic/chat/${conversationId}`, (msg) => {
+    const sub = stomp.subscribe(`/topic/chat.${conversationId}`, (msg) => {
       try {
         const ev = JSON.parse(msg.body);
         setMessages((prev) => [
@@ -395,7 +405,23 @@ export default function Live({ auth }) {
     setLoadingConversations(true);
     try {
       const list = await listConversations();
-      setConversationList(Array.isArray(list) ? list : []);
+      const arr = Array.isArray(list) ? list : [];
+      setConversationList(arr);
+
+      // Initialize the Messages badge from the server's persisted unread counts,
+      // so messages received while the user was offline show up on login
+      // (Facebook-style), not just live ones. Server count is authoritative.
+      const map = new Map();
+      let total = 0;
+      for (const c of arr) {
+        const n = c.unreadCount || 0;
+        if (n > 0 && c.otherUserId) {
+          map.set(c.otherUserId, n);
+          total += n;
+        }
+      }
+      setUnreadMessages(map);
+      setTotalUnread(total);
     } catch (e) {
       console.error("Failed to load conversations:", e);
       setConversationList([]);
@@ -457,7 +483,7 @@ export default function Live({ auth }) {
       console.log('Sending message:', { conversationId, body });
       stomp.publish({
         destination: `/app/chat.send/${conversationId}`,
-        body: JSON.stringify({ body, messageType: "text" }),
+        body: JSON.stringify({ body, messageType: "text", clientMsgId: crypto.randomUUID() }),
       });
       setMsgDraft("");
     } catch (error) {
@@ -468,32 +494,38 @@ export default function Live({ auth }) {
 
   const sendImage = async (file) => {
     if (!conversationId) return;
-    
+
     if (!wsConnected || !stomp.connected) {
       alert('Chat is connecting. Please wait...');
       return;
     }
 
+    // Documents/photos now upload directly to encrypted object storage via the
+    // media pipeline (10 MB limit) and the chat message carries only the object
+    // key — no more base64 inflating the socket frame.
+    const MAX_BYTES = 10 * 1024 * 1024;
+    if (file.size > MAX_BYTES) {
+      alert(`That file is too large (${(file.size / (1024 * 1024)).toFixed(1)} MB). The limit is 10 MB.`);
+      return;
+    }
+
+    const isImage = (file.type || "").startsWith("image/");
     try {
-      // Convert image to base64 for instant preview
-      const reader = new FileReader();
-      reader.onload = (e) => {
-        const base64 = e.target.result;
-        
-        // Send immediately with base64 - WhatsApp-style instant delivery
-        stomp.publish({
-          destination: `/app/chat.send/${conversationId}`,
-          body: JSON.stringify({ 
-            body: file.name,
-            messageType: "image",
-            mediaUrl: base64
-          }),
-        });
-      };
-      reader.readAsDataURL(file);
+      const media = await uploadMedia(file, "chat");
+      stomp.publish({
+        destination: `/app/chat.send/${conversationId}`,
+        body: JSON.stringify({
+          // For images we reference the optimized display variant; documents use
+          // the original key. The filename rides along in `body`.
+          body: file.name,
+          messageType: isImage ? "image" : "document",
+          mediaUrl: isImage ? media.displayKey : media.key,
+          clientMsgId: crypto.randomUUID(),
+        }),
+      });
     } catch (error) {
-      console.error('Failed to send image:', error);
-      alert('Failed to send image. Please try again.');
+      console.error('Failed to send attachment:', error);
+      alert(`Failed to send file: ${error.message || error}`);
     }
   };
 
@@ -680,10 +712,16 @@ export default function Live({ auth }) {
               ...headerIconBtn(false, "brand"),
               fontWeight: "800",
               fontSize: "15px",
+              ...(me?.avatarUrl ? {
+                backgroundImage: `url(${me.avatarUrl})`,
+                backgroundSize: "cover",
+                backgroundPosition: "center",
+                color: "transparent",
+              } : {}),
             }}
             title="Edit Profile"
           >
-            {(me?.displayName || auth.displayName)?.charAt(0).toUpperCase() || "U"}
+            {!me?.avatarUrl && ((me?.displayName || auth.displayName)?.charAt(0).toUpperCase() || "U")}
             {me?.live && (
               <div style={{
                 position: "absolute",
@@ -1232,7 +1270,7 @@ export default function Live({ auth }) {
               </div>
             )}
             
-            <PostComposer auth={auth} onPostCreated={() => refreshPosts(true)} userLocation={pos} vibes={vibes} />
+            <PostComposer auth={auth} avatarUrl={me?.avatarUrl} onPostCreated={() => refreshPosts(true)} userLocation={pos} vibes={vibes} />
             <PostFeed posts={posts} auth={auth} onUpdate={() => refreshPosts(true)} onViewProfile={viewUserProfile} vibes={vibes} />
             
             {/* Loading More Indicator */}

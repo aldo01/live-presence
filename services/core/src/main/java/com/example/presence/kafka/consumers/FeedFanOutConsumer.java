@@ -163,8 +163,8 @@ public class FeedFanOutConsumer {
      */
     private void notifyOnlineUsers(PostEvent event) {
         try {
-            // Broadcast to /topic/feed/new-post for all subscribed users
-            messagingTemplate.convertAndSend("/topic/feed/new-post", event);
+            // Broadcast to /topic/feed.new-post for all subscribed users
+            messagingTemplate.convertAndSend("/topic/feed.new-post", event);
             log.debug("Sent WebSocket notification for new post {}", event.getPostId());
         } catch (Exception e) {
             log.error("Error sending WebSocket notification: {}", e.getMessage());
