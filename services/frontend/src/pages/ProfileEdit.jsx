@@ -1,17 +1,49 @@
-import React, { useState, useEffect } from "react";
-import { getMe, updateProfile, updateAvatar } from "../api";
+import React, { useState, useEffect, useRef } from "react";
+import { getMe, updateProfile, updateAvatar, uploadImage, mediaPublicUrl } from "../api";
 
 export default function ProfileEdit({ auth, onClose }) {
   const [profile, setProfile] = useState(null);
   const [loading, setLoading] = useState(false);
   const [message, setMessage] = useState("");
-  
+
   const [displayName, setDisplayName] = useState("");
   const [bio, setBio] = useState("");
   const [gender, setGender] = useState("");
   const [interest, setInterest] = useState("");
   const [avatarUrl, setAvatarUrl] = useState("");
   const [profilePublic, setProfilePublic] = useState(true);
+  const [uploadingAvatar, setUploadingAvatar] = useState(false);
+  const fileInputRef = useRef(null);
+
+  const MAX_AVATAR_BYTES = 10 * 1024 * 1024;
+
+  const handleAvatarFile = async (e) => {
+    const file = e.target.files && e.target.files[0];
+    // Allow re-selecting the same file next time.
+    if (e.target) e.target.value = "";
+    if (!file) return;
+
+    if (!(file.type || "").startsWith("image/")) {
+      setMessage("❌ Please choose an image file (JPG, PNG, GIF, or WebP).");
+      return;
+    }
+    if (file.size > MAX_AVATAR_BYTES) {
+      setMessage(`❌ Image is too large (${(file.size / (1024 * 1024)).toFixed(1)} MB). Max 10 MB.`);
+      return;
+    }
+
+    setUploadingAvatar(true);
+    setMessage("");
+    try {
+      const { key } = await uploadImage(file, "avatar");
+      setAvatarUrl(mediaPublicUrl(key));
+    } catch (err) {
+      console.error("Avatar upload failed:", err);
+      setMessage("❌ " + (err.message || "Failed to upload photo"));
+    } finally {
+      setUploadingAvatar(false);
+    }
+  };
 
   useEffect(() => {
     loadProfile();
@@ -148,27 +180,59 @@ export default function ProfileEdit({ auth, onClose }) {
           }}>
             {!avatarUrl && displayName.charAt(0).toUpperCase()}
           </div>
-          
+
           <input
-            type="text"
-            value={avatarUrl}
-            onChange={(e) => setAvatarUrl(e.target.value)}
-            placeholder="Enter avatar URL"
-            style={{
-              width: "100%",
-              padding: "10px 16px",
-              borderRadius: "10px",
-              border: "1px solid #e5e7eb",
-              fontSize: "14px",
-              textAlign: "center"
-            }}
+            ref={fileInputRef}
+            type="file"
+            accept="image/*"
+            onChange={handleAvatarFile}
+            style={{ display: "none" }}
           />
+
+          <div style={{ display: "flex", gap: "10px", justifyContent: "center", flexWrap: "wrap" }}>
+            <button
+              type="button"
+              onClick={() => fileInputRef.current && fileInputRef.current.click()}
+              disabled={uploadingAvatar}
+              style={{
+                padding: "10px 20px",
+                borderRadius: "10px",
+                border: "none",
+                background: "linear-gradient(135deg, #667eea 0%, #764ba2 100%)",
+                color: "white",
+                fontSize: "14px",
+                fontWeight: "600",
+                cursor: uploadingAvatar ? "not-allowed" : "pointer",
+                opacity: uploadingAvatar ? 0.7 : 1,
+              }}
+            >
+              {uploadingAvatar ? "Uploading…" : avatarUrl ? "Change photo" : "Upload photo"}
+            </button>
+            {avatarUrl && !uploadingAvatar && (
+              <button
+                type="button"
+                onClick={() => setAvatarUrl("")}
+                style={{
+                  padding: "10px 20px",
+                  borderRadius: "10px",
+                  border: "1px solid #e5e7eb",
+                  background: "white",
+                  color: "#ef4444",
+                  fontSize: "14px",
+                  fontWeight: "600",
+                  cursor: "pointer",
+                }}
+              >
+                Remove
+              </button>
+            )}
+          </div>
           <div style={{
             fontSize: "12px",
             color: "#6b7280",
             marginTop: "8px"
           }}>
-            Paste an image URL or upload to services like imgur.com
+            Choose a photo from your device · JPG, PNG, GIF or WebP · up to 10 MB
           </div>
         </div>
 
@@ -442,7 +506,7 @@ export default function ProfileEdit({ auth, onClose }) {
           </button>
           <button
             onClick={handleSave}
-            disabled={loading}
+            disabled={loading || uploadingAvatar}
             style={{
               flex: 1,
               padding: "14px",

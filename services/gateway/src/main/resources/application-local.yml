@@ -4,8 +4,21 @@ server:
 spring:
   application:
     name: gateway
+  # SockJS can fall back from raw WebSocket to xhr_send, which POSTs each STOMP
+  # frame as an HTTP body through the gateway. Chat photos are inlined as base64,
+  # so raise the reactive codec buffer above the 256 KB default to let those
+  # frames through on the fallback transport too.
+  codec:
+    max-in-memory-size: 10MB
   cloud:
     gateway:
+      # The gateway owns CORS (see globalcors below), but the downstream Spring
+      # services also emit CORS headers on proxied responses. That yields two
+      # Access-Control-Allow-Origin values, which browsers reject ("multiple
+      # values ... only one is allowed"). Collapse any duplicates to a single
+      # value so real browser requests (not just curl) succeed.
+      default-filters:
+        - DedupeResponseHeader=Access-Control-Allow-Origin Access-Control-Allow-Credentials Vary, RETAIN_UNIQUE
       routes:
         # Auth service (public). Controller base path is /api/auth, so DO NOT rewrite.
         - id: auth-service
@@ -21,7 +34,7 @@ spring:
         # Core service WebSocket. STOMP auth is handled in-app via the CONNECT
         # frame, so the gateway AuthenticationFilter is intentionally omitted here.
         - id: core-ws
-          uri: ${CORE_SERVICE_WS_URI:ws://localhost:8090}
+          uri: ${CORE_SERVICE_WS_URI:http://localhost:8090}
           predicates:
             - Path=/ws/**
 
@@ -58,6 +71,26 @@ spring:
           predicates:
             - Path=/api/vibes/**
           filters:
+            - name: RequestRateLimiter
+              args:
+                redis-rate-limiter.replenishRate: 100
+                redis-rate-limiter.burstCapacity: 200
+
+        # Public, auth-free media (avatars) served as stable cacheable URLs so
+        # <img>/CSS url() can load them anywhere. MUST precede media-service so it
+        # matches first and skips the AuthenticationFilter.
+        - id: media-public
+          uri: ${MEDIA_SERVICE_URI:http://localhost:8087}
+          predicates:
+            - Path=/api/media/public/**
+
+        # Media service (presigned upload/download URLs + image optimization).
+        - id: media-service
+          uri: ${MEDIA_SERVICE_URI:http://localhost:8087}
+          predicates:
+            - Path=/api/media/**
+          filters:
+            - AuthenticationFilter
             - name: RequestRateLimiter
               args:
                 redis-rate-limiter.replenishRate: 100

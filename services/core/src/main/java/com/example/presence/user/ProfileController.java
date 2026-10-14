@@ -46,20 +46,46 @@ public class ProfileController {
   // ---------- GET /me ----------
   @GetMapping("/me")
   public ResponseEntity<?> me(@AuthenticationPrincipal JwtPrincipal p) {
-    var u = userRepo.findById(UUID.fromString(p.subject())).orElseThrow();
-    return ResponseEntity.ok(
-        new MeResponse(
-            u.getId().toString(),
-            u.getEmail(),
-            u.getDisplayName(),
-            u.getInterest(),
-            u.isLive(),
-            u.getAvatarUrl(),
-            u.getBio(),
-            u.getGender(),
-            u.isProfilePublic()
-        )
+    return ResponseEntity.ok(toMeResponse(getOrCreateProfile(p)));
+  }
+
+  private MeResponse toMeResponse(UserEntity u) {
+    return new MeResponse(
+        u.getId().toString(),
+        u.getEmail(),
+        u.getDisplayName(),
+        u.getInterest(),
+        u.isLive(),
+        u.getAvatarUrl(),
+        u.getBio(),
+        u.getGender(),
+        u.isProfilePublic()
     );
+  }
+
+  /**
+   * Returns the caller's profile row, lazily creating it from the JWT claims on
+   * first authenticated access. The auth service owns identity and publishes a
+   * user.registered event, but when Kafka is disabled (local/dev) no consumer
+   * provisions this projection — so we do it on demand here. This is the first
+   * authenticated call the web client makes after login, so provisioning here
+   * means every downstream endpoint finds an existing row.
+   */
+  private UserEntity getOrCreateProfile(JwtPrincipal p) {
+    UUID userId = UUID.fromString(p.subject());
+    return userRepo.findById(userId).orElseGet(() -> {
+      UserEntity u = new UserEntity();
+      u.setId(userId);
+      u.setEmail(p.email());
+      String displayName = (p.name() != null && !p.name().isBlank())
+          ? p.name()
+          : (p.email() != null ? p.email() : p.subject());
+      u.setDisplayName(displayName);
+      // auth.users is the source of truth for credentials; this projection keeps
+      // only an empty placeholder so the NOT-NULL-in-metadata column is satisfied.
+      u.setPasswordHash("");
+      return userRepo.save(u);
+    });
   }
 
   // ---------- PUT /me/interest ----------
@@ -135,7 +161,7 @@ public class ProfileController {
     }
 
     userRepo.save(u);
-    return ResponseEntity.ok("Profile updated successfully");
+    return ResponseEntity.ok(toMeResponse(u));
   }
 
   // ---------- PUT /me/avatar ----------
@@ -147,7 +173,7 @@ public class ProfileController {
     var u = userRepo.findById(UUID.fromString(p.subject())).orElseThrow();
     u.setAvatarUrl(req.avatarUrl());
     userRepo.save(u);
-    return ResponseEntity.ok("Avatar updated successfully");
+    return ResponseEntity.ok(toMeResponse(u));
   }
 
   // ---------- PUT /me/password ----------

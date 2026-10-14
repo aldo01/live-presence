@@ -17,7 +17,10 @@ public class UserEntity {
   @Column(nullable = false, unique = true, columnDefinition = "citext")
   private String email;
 
-  @Column(name = "password_hash", nullable = false)
+  // The auth service is the source of truth for credentials; this core projection
+  // only mirrors profile data and may legitimately have no password hash (seeded
+  // or event-provisioned rows), so this column must stay nullable to allow saves.
+  @Column(name = "password_hash")
   private String passwordHash;
 
   @Column(name = "display_name", nullable = false, length = 100)
