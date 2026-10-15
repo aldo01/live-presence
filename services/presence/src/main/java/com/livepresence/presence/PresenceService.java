@@ -22,7 +22,10 @@ public class PresenceService {
 
   private static final String GEO_KEY = "presence:geo";
   private static final String META_KEY_PREFIX = "presence:meta:"; // + userId
-  private static final long TTL_SECONDS = 30; // if heartbeat stops, user disappears
+  // Short TTL so a user who closes the tab / stops heartbeating disappears
+  // quickly. The web client heartbeats every ~5s, so 15s tolerates 2 missed
+  // beats (brief network blips) while still feeling near-real-time.
+  private static final long TTL_SECONDS = 15; // if heartbeat stops, user disappears
 
   private final StringRedisTemplate redis;
 

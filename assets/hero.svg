@@ -1,0 +1,79 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1280" height="400" viewBox="0 0 1280 400" role="img" aria-label="Live Presence — find your people, feel the vibe, right around you">
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#4f46e5"/>
+      <stop offset="0.55" stop-color="#6d28d9"/>
+      <stop offset="1" stop-color="#9333ea"/>
+    </linearGradient>
+    <radialGradient id="glow" cx="0.5" cy="0.5" r="0.5">
+      <stop offset="0" stop-color="#ffffff" stop-opacity="0.35"/>
+      <stop offset="1" stop-color="#ffffff" stop-opacity="0"/>
+    </radialGradient>
+    <linearGradient id="pin" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#22d3ee"/>
+      <stop offset="1" stop-color="#3b82f6"/>
+    </linearGradient>
+    <filter id="soft" x="-30%" y="-30%" width="160%" height="160%">
+      <feGaussianBlur stdDeviation="8"/>
+    </filter>
+    <style>
+      .t  { font-family: 'Segoe UI', Roboto, Helvetica, Arial, sans-serif; }
+      .title { font-weight: 800; }
+      .tag   { font-weight: 500; }
+      .chip  { font-weight: 700; }
+    </style>
+  </defs>
+
+  <!-- backdrop -->
+  <rect width="1280" height="400" rx="28" fill="url(#bg)"/>
+  <circle cx="1030" cy="120" r="260" fill="url(#glow)"/>
+  <circle cx="120" cy="340" r="220" fill="url(#glow)" opacity="0.5"/>
+
+  <!-- faint map grid -->
+  <g stroke="#ffffff" stroke-opacity="0.08" stroke-width="2">
+    <path d="M0 90 H1280 M0 170 H1280 M0 250 H1280 M0 330 H1280"/>
+    <path d="M160 0 V400 M360 0 V400 M560 0 V400 M760 0 V400 M960 0 V400 M1160 0 V400"/>
+  </g>
+
+  <!-- left: wordmark + tagline -->
+  <g transform="translate(72,120)">
+    <g transform="translate(0,-28)">
+      <circle cx="22" cy="22" r="22" fill="#ffffff" opacity="0.14"/>
+      <path d="M22 8 c-8 0 -14 6 -14 14 c0 10 14 22 14 22 s14 -12 14 -22 c0 -8 -6 -14 -14 -14 z" fill="url(#pin)"/>
+      <circle cx="22" cy="22" r="6" fill="#ffffff"/>
+    </g>
+    <text class="t title" x="60" y="8" font-size="56" fill="#ffffff">Live Presence</text>
+    <text class="t tag" x="2" y="66" font-size="27" fill="#e9d5ff">Find your people. Feel the vibe.</text>
+    <text class="t title" x="2" y="104" font-size="27" fill="#ffffff">Right around you.</text>
+
+    <!-- vibe chips -->
+    <g transform="translate(0,150)" font-size="18" class="t chip">
+      <g><rect x="0"   y="0" width="118" height="42" rx="21" fill="#ffffff" opacity="0.16"/><text x="59" y="27" fill="#ffffff" text-anchor="middle">☕ Coffee</text></g>
+      <g><rect x="132" y="0" width="112" height="42" rx="21" fill="#ffffff" opacity="0.16"/><text x="188" y="27" fill="#ffffff" text-anchor="middle">🎵 Music</text></g>
+      <g><rect x="256" y="0" width="118" height="42" rx="21" fill="#ffffff" opacity="0.16"/><text x="315" y="27" fill="#ffffff" text-anchor="middle">⚽ Sports</text></g>
+      <g><rect x="386" y="0" width="112" height="42" rx="21" fill="#ffffff" opacity="0.16"/><text x="442" y="27" fill="#ffffff" text-anchor="middle">🎨 Art</text></g>
+    </g>
+  </g>
+
+  <!-- right: proximity radar with vibe avatars -->
+  <g transform="translate(1000,200)">
+    <circle r="150" fill="none" stroke="#ffffff" stroke-opacity="0.18" stroke-width="2"/>
+    <circle r="105" fill="none" stroke="#ffffff" stroke-opacity="0.22" stroke-width="2"/>
+    <circle r="60"  fill="none" stroke="#ffffff" stroke-opacity="0.28" stroke-width="2"/>
+    <circle r="150" fill="#ffffff" opacity="0.04"/>
+
+    <!-- you -->
+    <circle r="34" fill="#ffffff" filter="url(#soft)" opacity="0.5"/>
+    <circle r="30" fill="#ffffff"/>
+    <text class="t title" x="0" y="8" font-size="22" fill="#6d28d9" text-anchor="middle">YOU</text>
+
+    <!-- nearby vibe people -->
+    <g text-anchor="middle" class="t title" font-size="18" fill="#ffffff">
+      <g transform="translate(-92,-70)"><circle r="24" fill="#f59e0b"/><text y="6">AM</text></g>
+      <g transform="translate(96,-48)"><circle r="24" fill="#10b981"/><text y="6">DS</text></g>
+      <g transform="translate(120,56)"><circle r="24" fill="#ef4444"/><text y="6">RD</text></g>
+      <g transform="translate(-70,92)"><circle r="24" fill="#3b82f6"/><text y="6">IN</text></g>
+      <g transform="translate(-130,24)"><circle r="20" fill="#ec4899"/><text y="6">MI</text></g>
+    </g>
+  </g>
+</svg>
