@@ -176,13 +176,16 @@ public class PostController {
         try {
             var commentsPage = postService.getCommentsPaginated(id, page, size);
             return ResponseEntity.ok(Map.of(
-                "comments", commentsPage.getContent().stream().map(c -> Map.of(
-                    "id", c.getId().toString(),
-                    "userId", c.getUser().getId().toString(),
-                    "authorName", c.getUser().getDisplayName(),
-                    "content", c.getContent(),
-                    "createdAt", c.getCreatedAt()
-                )).toList(),
+                "comments", commentsPage.getContent().stream().map(c -> {
+                    Map<String, Object> m = new java.util.HashMap<>();
+                    m.put("id", c.getId().toString());
+                    m.put("userId", c.getUser().getId().toString());
+                    m.put("authorName", c.getUser().getDisplayName());
+                    m.put("authorAvatar", c.getUser().getAvatarUrl());
+                    m.put("content", c.getContent());
+                    m.put("createdAt", c.getCreatedAt());
+                    return m;
+                }).toList(),
                 "totalPages", commentsPage.getTotalPages(),
                 "totalElements", commentsPage.getTotalElements(),
                 "currentPage", page,

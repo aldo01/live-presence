@@ -78,7 +78,13 @@ public class PostService {
      * Location-based "vibe feed": posts within {@code radiusKm} of the user,
      * newest first. When {@code vibe} is null/blank all vibes in range are
      * returned; otherwise the feed is filtered to that single vibe.
+     *
+     * Read-only transactional so the lazy {@code comment.getUser()} proxy can be
+     * initialised while building each post's recent-comments list (open-in-view
+     * is disabled, so without this the session is already closed and accessing
+     * the comment author throws LazyInitializationException).
      */
+    @Transactional(readOnly = true)
     public List<Map<String, Object>> getFeed(double lat, double lon, double radiusKm,
                                               String vibe, int limit, int offset, String currentUserId) {
         // Bounding box so the (location_lat, location_lon) index can prune rows
@@ -136,6 +142,7 @@ public class PostService {
                 commentMap.put("id", comment.getId().toString());
                 commentMap.put("content", comment.getContent());
                 commentMap.put("authorName", comment.getUser().getDisplayName());
+                commentMap.put("authorAvatar", comment.getUser().getAvatarUrl());
                 commentMap.put("createdAt", comment.getCreatedAt());
                 commentsData.add(commentMap);
             }

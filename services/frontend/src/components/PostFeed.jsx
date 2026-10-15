@@ -1,6 +1,10 @@
 import React, { useState } from "react";
-import { toggleLike, addComment, deletePost, reactToPost, removeReaction, getReactions } from "../api";
+import { toggleLike, addComment, deletePost, reactToPost, removeReaction, getReactions, getMediaDownloadUrl } from "../api";
 import { FALLBACK_VIBES, buildVibeIndex, vibeEmoji, vibeLabel, vibeColor } from "../vibes";
+
+function isDirectUrl(s) {
+  return typeof s === "string" && (s.startsWith("http") || s.startsWith("data:") || s.startsWith("blob:"));
+}
 
 // Format counts like 966K, 18.5K, 9.7M
 function formatCount(count) {
@@ -31,6 +35,28 @@ export default function PostFeed({ posts, auth, onUpdate, onViewProfile, vibes }
   const [showComments, setShowComments] = useState({});
   const [showReactionPicker, setShowReactionPicker] = useState({});
   const [postReactions, setPostReactions] = useState({});
+  const [postImageUrls, setPostImageUrls] = useState({}); // postId -> resolved image URL
+
+  // Resolve post image keys into short-lived presigned URLs for display.
+  React.useEffect(() => {
+    let alive = true;
+    (posts || []).forEach(async (post) => {
+      if (!post.imageUrl || postImageUrls[post.id]) return;
+      if (isDirectUrl(post.imageUrl)) {
+        setPostImageUrls((prev) => ({ ...prev, [post.id]: post.imageUrl }));
+        return;
+      }
+      try {
+        const { downloadUrl } = await getMediaDownloadUrl(post.imageUrl);
+        if (alive) setPostImageUrls((prev) => ({ ...prev, [post.id]: downloadUrl }));
+      } catch (e) {
+        /* leave unresolved */
+      }
+    });
+    return () => {
+      alive = false;
+    };
+  }, [posts, postImageUrls]);
 
   // Fetch reactions for all posts
   React.useEffect(() => {
@@ -144,7 +170,9 @@ export default function PostFeed({ posts, auth, onUpdate, onViewProfile, vibes }
                     width: "44px",
                     height: "44px",
                     borderRadius: "50%",
-                    background: "linear-gradient(135deg, #667eea 0%, #764ba2 100%)",
+                    background: post.authorAvatar
+                      ? `url(${post.authorAvatar}) center/cover`
+                      : "linear-gradient(135deg, #667eea 0%, #764ba2 100%)",
                     display: "flex",
                     alignItems: "center",
                     justifyContent: "center",
@@ -154,7 +182,7 @@ export default function PostFeed({ posts, auth, onUpdate, onViewProfile, vibes }
                     position: "relative",
                   }}
                 >
-                  {post.authorName?.charAt(0).toUpperCase() || "U"}
+                  {!post.authorAvatar && (post.authorName?.charAt(0).toUpperCase() || "U")}
                   {authorIsLive && (
                     <div style={{
                       position: "absolute",
@@ -201,6 +229,24 @@ export default function PostFeed({ posts, auth, onUpdate, onViewProfile, vibes }
             <div style={{ fontSize: "15px", lineHeight: "1.6", marginBottom: "12px", color: "#1f2937" }}>
               {post.content}
             </div>
+
+            {/* Post image (resolved from object-storage key to a presigned URL) */}
+            {post.imageUrl && (
+              <div style={{ marginBottom: "12px" }}>
+                {postImageUrls[post.id] ? (
+                  <img
+                    src={postImageUrls[post.id]}
+                    alt="post"
+                    style={{ width: "100%", borderRadius: "12px", display: "block", cursor: "pointer" }}
+                    onClick={() => window.open(postImageUrls[post.id], "_blank")}
+                  />
+                ) : (
+                  <div style={{ padding: "40px", textAlign: "center", color: "#9ca3af", background: "#f3f4f6", borderRadius: "12px" }}>
+                    🖼️ Loading image…
+                  </div>
+                )}
+              </div>
+            )}
 
             {/* Vibe / Interest */}
             {vibeList.length > 0 && (
@@ -469,7 +515,9 @@ export default function PostFeed({ posts, auth, onUpdate, onViewProfile, vibes }
                         width: "32px",
                         height: "32px",
                         borderRadius: "50%",
-                        background: "linear-gradient(135deg, #667eea 0%, #764ba2 100%)",
+                        background: comment.authorAvatar
+                          ? `url(${comment.authorAvatar}) center/cover`
+                          : "linear-gradient(135deg, #667eea 0%, #764ba2 100%)",
                         display: "flex",
                         alignItems: "center",
                         justifyContent: "center",
@@ -479,7 +527,7 @@ export default function PostFeed({ posts, auth, onUpdate, onViewProfile, vibes }
                         flexShrink: 0,
                       }}
                     >
-                      {comment.authorName?.charAt(0).toUpperCase() || "U"}
+                      {!comment.authorAvatar && (comment.authorName?.charAt(0).toUpperCase() || "U")}
                     </div>
                     <div style={{ flex: 1 }}>
                       <div style={{ fontWeight: "600", fontSize: "13px", marginBottom: "2px" }}>
